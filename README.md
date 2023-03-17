@@ -47,7 +47,7 @@ end
 
 #### Commands
 
-`snippets:next`: sets selections for the next tabstop. (wraps around to 0)
+`snippets:next`: sets selections for the next tabstop. (wraps around to 1)
 
 `snippets:previous`: sets selections for the previous tabstop. (wraps around to the last tabstop)
 
