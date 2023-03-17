@@ -180,7 +180,7 @@ local function variable_node(v, _s)
 	-- > When a variable is unknown (that is, its name isn’t defined) the name of
 	-- > the variable is inserted and it is transformed into a placeholder.
 	-- whatever that means, just convert to tabstop w/ default or transform
-	
+
 	local name = v[2]
 	local var = variables[name]
 
@@ -241,7 +241,7 @@ local function placeholder_node(v, _s)
 end
 
 local function build_snippet(v, _s)
-	for i, n in ipairs(v) do _s:add(n) end
+	for _, n in ipairs(v) do _s:add(n) end
 	return _s:ok()
 end
 
@@ -251,8 +251,8 @@ end
 local P
 do
 	local mt = {
-		__call = function(mt, parser, to_node)
-			return setmetatable({ parser = parser, to_node = to_node }, mt)
+		__call = function(mt, parser, converter)
+			return setmetatable({ parser = parser, converter = converter }, mt)
 		end,
 		-- allows 'lazy arguments'; i.e can use a yet to be defined rule in a previous rule
 		__index = function(t, k)
@@ -262,10 +262,9 @@ do
 
 	P = setmetatable({
 		__call = function(t, str, at, _s)
-			local msg
 			local r = t.parser(str, at, _s)
-			if r.ok and t.to_node then
-				r.value = t.to_node(r.value, _s)
+			if r.ok and t.converter then
+				r.value = t.converter(r.value, _s)
 			end
 			return r
 		end
@@ -414,7 +413,7 @@ P.options = pattern('%l*')
 
 P.regex = P(__text3, to_text)
 
-P.format = P(any( 
+P.format = P(any(
 	seq(t['$'],  P.int),
 	seq(t['${'], P.int, maybe(seq(t[':'], any(
 		seq(t['/'], any(t['upcase'], t['downcase'], t['capitalize'], t['pascalcase'], t['camelcase'])),

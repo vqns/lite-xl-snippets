@@ -35,6 +35,15 @@ local function unmask(x, ...)
 	return type(x) == 'function' and x(...) or x
 end
 
+local function deep_copy(x)
+	if type(x) ~= 'table' then return x end
+	local r = { }
+	for k, v in pairs(x) do
+		r[k] = deep_copy(v)
+	end
+	return r
+end
+
 local function copy_snippet(_s)
 	local s = common.merge(_s)
 	local nodes = { }
@@ -43,15 +52,6 @@ local function copy_snippet(_s)
 	end
 	s.nodes = nodes
 	return s
-end
-
-local function deep_copy(x)
-	if type(x) ~= 'table' then return x end
-	local r = { }
-	for k, v in pairs(x) do
-		r[k] = deep_copy(v)
-	end
-	return r
 end
 
 local function autocomplete_cleanup()
@@ -75,7 +75,7 @@ local function get_raw(raw)
         for _, v in ipairs(SNIPPET_FIELDS) do
             _s[v] = _p[v]
         end
-    elseif raw.nodes then        
+    elseif raw.nodes then
         _s.nodes = common.merge(raw.nodes)
     else
         return
@@ -91,11 +91,11 @@ end
 local function get_by_id(id)
     local _s
     if cache[id] then
-        _s = copy_snippet(cache[id])
+        _s = deep_copy(cache[id])
     elseif raws[id] then
         _s = get_raw(raws[id])
         if not _s then return end
-        cache[id] = copy_snippet(_s)
+        cache[id] = deep_copy(_s)
     end
     return _s
 end
@@ -147,8 +147,6 @@ local function match(pattern, text)
 
 	if pattern.kind == 'lua' then
 		text = text:gsub(pattern.pattern, lua_cb, 1)
-	elseif p.kind == 'regex' then
-	elseif p.kind == 'token' then
 	end
 
 	return matches, text
@@ -159,12 +157,12 @@ local function get_matches(patterns, ctx, l, c, idx)
 	local _l, _c = 1, 1
 	if idx > 1 then _l, _c = doc:get_selection_idx(idx - 1) end
 	local text = doc:get_text(_l, _c, l, c)
-	
+
 	local m, t = { }, text
 	for id, p in ipairs(patterns) do
 		m[id], t = match(p, t)
 	end
-	
+
 	if text ~= t then
 		-- edge case if t == '': cursors will be merged
 		local offset = #t - #text
@@ -182,9 +180,8 @@ local resolve_nodes, resolve_one, resolve_static, resolve_user
 
 local function concat_buf(into)
 	if #into.buf == 0 then return end
-	
 	table.insert(
-		into.nodes, 
+		into.nodes,
 		{ kind = 'static', value = table.concat(into.buf) }
 	)
 	into.buf = { }
@@ -223,11 +220,8 @@ function resolve_user(n, ctx, into)
 	local v
 	if n.default then                        -- node specific default
 		v = resolve_default(n.default, ctx, into)
-	-- elseif into.values[id] then              -- already resolved general default
-	-- 	v = deep_copy(into.values[id])
 	elseif into.defaults[id] then            -- unresolved general default
 		v = resolve_default(into.defaults[id], ctx, into)
-		-- into.values[id] = deep_copy(v)
 	end
 
 	local raw
@@ -250,7 +244,6 @@ function resolve_user(n, ctx, into)
 	end
 
 	n.transform = not n.transform and into.transforms[id] or n.transform
-	-- if n.transform then v = n.transform(v, raw) or '' end
 	if raw then
 		raw.value = v
 		n.value = raw
@@ -263,7 +256,7 @@ function resolve_static(n, ctx, into)
 	local t, v = type(n), n
 	if t == 'table' and n.kind then
 		v = n.value
-		t = type(v) 
+		t = type(v)
 	end
 
 	if t == 'table' then
@@ -277,7 +270,6 @@ end
 
 function resolve_one(n, ctx, into)
 	if n == nil then return end
-
 	if type(n) == 'table' and n.kind == 'user' then
 		resolve_user(n, ctx, into)
 	else
@@ -300,7 +292,6 @@ local function init(_s)
 		nodes    = { },
 		mains    = { },
 		tabstops = { },
-		-- values   = { },
 		defaults = _s.defaults,
 		transforms = _s.transforms
 	}
@@ -329,7 +320,7 @@ local function push(_s)
 	for i = #watch, 1, -1 do
 		local w2l, w2c = watch[i].start_line, watch[i].start_col
 		if w2l < w1l or w2l == w1l and w2c < w1c then
-			idx = i + 1; break 
+			idx = i + 1; break
 		end
 	end
 	common.splice(watch, idx, 0, _s.watches)
@@ -382,7 +373,7 @@ end
 
 local function insert_nodes(nodes, doc, l, c, watches, indent)
 	local _l, _c
-	for i, n in ipairs(nodes) do
+	for _, n in ipairs(nodes) do
 		local w
 		if n.kind == 'user' then
 			w = { start_line = l, start_col = c }
@@ -403,12 +394,6 @@ local function insert_nodes(nodes, doc, l, c, watches, indent)
 		end
 	end
 	return l, c
-end
-
-local function insert_indent(nodes, indent)
-	for _, n in ipairs(nodes) do
-		
-	end
 end
 
 local function expand(_s)
@@ -435,7 +420,7 @@ local function transforms_for(_s, id)
 		if n == 'count' then goto continue end
 		local w = n.watch
 		if --[[not w.dirty or]] not n.transform then goto continue end
-	
+
 		local v = doc:get_text(w.start_line, w.start_col, w.end_line, w.end_col)
 		local r = type(n.value) == 'table' and n.value or nil
 		v = n.transform(v, r)
@@ -552,6 +537,7 @@ end
 
 local raw_insert, raw_remove = Doc.raw_insert, Doc.raw_remove
 
+
 function Doc:raw_insert(l1, c1, t, undo, ...)
 	raw_insert(self, l1, c1, t, undo, ...)
 	local watch = watches[self]
@@ -565,7 +551,7 @@ function Doc:raw_insert(l1, c1, t, undo, ...)
 		local w = watch[i]
 		local d1, d2 = true, false
 
-		if w.end_line > l1 then 
+		if w.end_line > l1 then
 			w.end_line = w.end_line + ldiff
 		elseif w.end_line == l1 and w.end_col >= c1 then
 			w.end_line = w.end_line + ldiff
@@ -574,7 +560,7 @@ function Doc:raw_insert(l1, c1, t, undo, ...)
 			d1 = false
 		end
 
-		if w.start_line > l1 then 
+		if w.start_line > l1 then
 			w.start_line = w.start_line + ldiff
 		elseif w.start_line == l1 and w.start_col > c1 then
 			w.start_line = w.start_line + ldiff
@@ -597,7 +583,7 @@ function Doc:raw_remove(l1, c1, l2, c2, ...)
 		local w = watch[i]
 		local d1, d2 = true, false
 		local wsl, wsc, wel, wec = w.start_line, w.start_col, w.end_line, w.end_col
-	
+
 		if wel > l1 or (wel == l1 and wec > c1) then
 			if wel > l2 then
 				w.end_line = wel - ldiff
@@ -658,7 +644,7 @@ function M.add(snippet)
 	local ac
 	if autocomplete and snippet.trigger then
 		ac = {
-			info = snippet.name,
+			info = snippet.info,
 			desc = snippet.desc or snippet.template,
 			onselect = ac_callback,
 			data = id
