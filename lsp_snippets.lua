@@ -6,9 +6,23 @@
 
 local core     = require 'core'
 local common   = require 'core.common'
+local Doc      = require 'core.doc'
 local system   = require 'system'
 local regex    = require 'regex'
 local snippets = require 'plugins.snippets'
+
+local json do
+	local ok, j = pcall(require, 'plugins.json')
+	if not ok then
+		local extra_paths = { 'lsp', 'lintplus' }
+		for _, p in ipairs(extra_paths) do
+			ok, j = pcall(require, 'plugins.' .. p .. '.json')
+			if ok then break end
+		end
+	end
+	json = ok and j
+end
+
 
 local B = snippets.builder
 
@@ -24,8 +38,8 @@ local variables = {
 	TM_CURRENT_WORD  = function(ctx) return ctx.partial end,
 	TM_LINE_INDEX    = function(ctx) return ctx.line - 1 end,
 	TM_LINE_NUMBER   = function(ctx) return ctx.line end,
-	TM_FILENAME      = function(ctx) return ctx.doc.filename:match("[^/%\\]*$") or '' end,
-	TM_FILENAME_BASE = function(ctx) return ctx.doc.filename:match("([^/%\\]*)%.%w*$") or ctx.doc.filename end,
+	TM_FILENAME      = function(ctx) return ctx.doc.filename:match('[^/%\\]*$') or '' end,
+	TM_FILENAME_BASE = function(ctx) return ctx.doc.filename:match('([^/%\\]*)%.%w*$') or ctx.doc.filename end,
 	TM_DIRECTORY     = function(ctx) return ctx.doc.filename:match('([^/%\\]*)[/%\\].*$') or '' end,
 	TM_FILEPATH      = function(ctx) return common.dirname(ctx.doc.abs_filename) or '' end,
 	-- VSCode
@@ -248,8 +262,7 @@ end
 
 -- parser metatable
 
-local P
-do
+local P do
 	local mt = {
 		__call = function(mt, parser, converter)
 			return setmetatable({ parser = parser, converter = converter }, mt)
@@ -467,16 +480,544 @@ P.any = any(P.dollars, P.text)
 P.snippet = P(rep(P.any), build_snippet)
 
 
+-- JSON files
+
+-- defined at the end of the file
+local extensions
+
+local files = { }
+
+local files2exts = { }
+local exts2files = { }
+
+local function add_file(filename, exts)
+	if files[filename] ~= nil or not filename:match('%.json$') then return end
+	if not exts then
+		local lang_name = filename:match('([^/%\\]*)%.%w*$'):lower()
+		exts = extensions[lang_name]
+		if not exts then return end
+	end
+	files[filename] = false
+	exts = type(exts) == 'string' and { exts } or exts
+	for _, e in ipairs(exts) do
+		files2exts[filename] = files2exts[filename] or { }
+		table.insert(files2exts[filename], '%.' .. e .. '$')
+		exts2files[e] = exts2files[e] or { }
+		table.insert(exts2files[e], filename)
+	end
+end
+
+local function parse_file(file)
+	if files[file] then return end
+
+	files[file] = true
+
+	local _f = io.open(file)
+	if not _f then return end
+	local r = json.decode(_f:read('a'))
+	_f:close()
+
+	local exts = files2exts[file]
+	for i, s in pairs(r) do
+		local template = type(s.body) == 'table' and table.concat(s.body, '\n') or s.body
+		snippets.add {
+			trigger = s.prefix,
+			format = 'lsp',
+			files = exts,
+			info = i,
+			desc = s.description,
+			template = template
+		}
+	end
+end
+
+local function for_filename(name)
+	if not name then return end
+	local ext = name:match('%.(.*)$')
+	if not ext then return end
+	local files = exts2files[ext]
+	if not files then return end
+	for _, f in ipairs(files) do
+		parse_file(f)
+	end
+end
+
+local doc_new = Doc.new
+function Doc:new(filename, ...)
+	doc_new(self, filename, ...)
+	for_filename(filename)
+end
+
+local doc_set_filename = Doc.set_filename
+function Doc:set_filename(filename, ...)
+	doc_set_filename(self, filename, ...)
+	for_filename(filename)
+end
+
+
 -- API
 
-local function parse(template)
+local M = { }
+
+function M.parse(template)
 	local _s = B.new()
 	local r = P.snippet(template, 1, _s)
 	return r.ok and r.at == #template + 1 and r.value or B.new():s(template):ok()
 end
 
-snippets.parsers.lsp = parse
+snippets.parsers.lsp = M.parse
 
-return {
-	parse = parse
+local warned = false
+function M.add_paths(paths)
+	if not json then
+		if not warned then
+			core.error('Could not add snippet files: JSON plugin not found')
+			warned = true
+		end
+		return
+	end
+
+	paths = type(paths) ~= 'table' and { paths } or paths
+
+	for _, p in ipairs(paths) do
+		-- non absolute paths are treated as relative from USERDIR
+		p = not common.is_absolute_path(p) and (USERDIR .. PATHSEP .. p) or p
+		local finfo = system.get_file_info(p)
+
+		-- if path of a directory, add every file it contains and directories
+		-- whose name is that of a lang
+		if finfo and finfo.type == 'dir' then
+			for _, f in ipairs(system.list_dir(p)) do
+				f = p .. PATHSEP .. f
+				finfo = system.get_file_info(f)
+				if not finfo or finfo.type == 'file' then
+					add_file(f)
+				else
+					-- only if the directory's name matches a language
+					local lang_name = f:match('[^/%\\]*$'):lower()
+					local exts = extensions[lang_name]
+					for _, f2 in ipairs(system.list_dir(f)) do
+						f2 = f .. PATHSEP .. f2
+						finfo = system.get_file_info(f2)
+						if not finfo or finfo.type == 'file' then
+							add_file(f2, exts)
+						end
+					end
+				end
+			end
+		-- if path of a file, add the file
+		else
+			add_file(p)
+		end
+	end
+end
+
+
+-- extension dump from https://gist.github.com/ppisarczyk/43962d06686722d26d176fad46879d41
+-- nothing after this
+
+-- 90% of these are useless but cba
+
+extensions = {
+	['abap'] = { 'abap', },
+	['ags script'] = { 'asc', 'ash', },
+	['ampl'] = { 'ampl', 'mod', },
+	['antlr'] = { 'g4', },
+	['api blueprint'] = { 'apib', },
+	['apl'] = { 'apl', 'dyalog', },
+	['asp'] = { 'asp', 'asax', 'ascx', 'ashx', 'asmx', 'aspx', 'axd', },
+	['ats'] = { 'dats', 'hats', 'sats', },
+	['actionscript'] = { 'as', },
+	['ada'] = { 'adb', 'ada', 'ads', },
+	['agda'] = { 'agda', },
+	['alloy'] = { 'als', },
+	['apacheconf'] = { 'apacheconf', 'vhost', },
+	['apex'] = { 'cls', },
+	['applescript'] = { 'applescript', 'scpt', },
+	['arc'] = { 'arc', },
+	['arduino'] = { 'ino', },
+	['asciidoc'] = { 'asciidoc', 'adoc', 'asc', },
+	['aspectj'] = { 'aj', },
+	['assembly'] = { 'asm', 'a51', 'inc', 'nasm', },
+	['augeas'] = { 'aug', },
+	['autohotkey'] = { 'ahk', 'ahkl', },
+	['autoit'] = { 'au3', },
+	['awk'] = { 'awk', 'auk', 'gawk', 'mawk', 'nawk', },
+	['batchfile'] = { 'bat', 'cmd', },
+	['befunge'] = { 'befunge', },
+	['bison'] = { 'bison', },
+	['bitbake'] = { 'bb', },
+	['blitzbasic'] = { 'bb', 'decls', },
+	['blitzmax'] = { 'bmx', },
+	['bluespec'] = { 'bsv', },
+	['boo'] = { 'boo', },
+	['brainfuck'] = { 'b', 'bf', },
+	['brightscript'] = { 'brs', },
+	['bro'] = { 'bro', },
+	['c'] = { 'c', 'cats', 'h', 'idc', 'w', },
+	['c#'] = { 'cs', 'cake', 'cshtml', 'csx', },
+	['c++'] = { 'cpp', 'c++', 'cc', 'cp', 'cxx', 'h', 'h++', 'hh', 'hpp', 'hxx', 'inc', 'inl', 'ipp', 'tcc', 'tpp', },
+	['c-objdump'] = { 'c-objdump', },
+	['c2hs haskell'] = { 'chs', },
+	['clips'] = { 'clp', },
+	['cmake'] = { 'cmake', 'cmake.in', },
+	['cobol'] = { 'cob', 'cbl', 'ccp', 'cobol', 'cpy', },
+	['css'] = { 'css', },
+	['csv'] = { 'csv', },
+	['cap\'n proto'] = { 'capnp', },
+	['cartocss'] = { 'mss', },
+	['ceylon'] = { 'ceylon', },
+	['chapel'] = { 'chpl', },
+	['charity'] = { 'ch', },
+	['chuck'] = { 'ck', },
+	['cirru'] = { 'cirru', },
+	['clarion'] = { 'clw', },
+	['clean'] = { 'icl', 'dcl', },
+	['click'] = { 'click', },
+	['clojure'] = { 'clj', 'boot', 'cl2', 'cljc', 'cljs', 'cljs.hl', 'cljscm', 'cljx', 'hic', },
+	['coffeescript'] = { 'coffee', '_coffee', 'cake', 'cjsx', 'cson', 'iced', },
+	['coldfusion'] = { 'cfm', 'cfml', },
+	['coldfusion cfc'] = { 'cfc', },
+	['common lisp'] = { 'lisp', 'asd', 'cl', 'l', 'lsp', 'ny', 'podsl', 'sexp', },
+	['component pascal'] = { 'cp', 'cps', },
+	['cool'] = { 'cl', },
+	['coq'] = { 'coq', 'v', },
+	['cpp-objdump'] = { 'cppobjdump', 'c++-objdump', 'c++objdump', 'cpp-objdump', 'cxx-objdump', },
+	['creole'] = { 'creole', },
+	['crystal'] = { 'cr', },
+	['cucumber'] = { 'feature', },
+	['cuda'] = { 'cu', 'cuh', },
+	['cycript'] = { 'cy', },
+	['cython'] = { 'pyx', 'pxd', 'pxi', },
+	['d'] = { 'd', 'di', },
+	['d-objdump'] = { 'd-objdump', },
+	['digital command language'] = { 'com', },
+	['dm'] = { 'dm', },
+	['dns zone'] = { 'zone', 'arpa', },
+	['dtrace'] = { 'd', },
+	['darcs patch'] = { 'darcspatch', 'dpatch', },
+	['dart'] = { 'dart', },
+	['diff'] = { 'diff', 'patch', },
+	['dockerfile'] = { 'dockerfile', },
+	['dogescript'] = { 'djs', },
+	['dylan'] = { 'dylan', 'dyl', 'intr', 'lid', },
+	['e'] = { 'E', },
+	['ecl'] = { 'ecl', 'eclxml', },
+	['eclipse'] = { 'ecl', },
+	['eagle'] = { 'sch', 'brd', },
+	['ecere projects'] = { 'epj', },
+	['eiffel'] = { 'e', },
+	['elixir'] = { 'ex', 'exs', },
+	['elm'] = { 'elm', },
+	['emacs lisp'] = { 'el', 'emacs', 'emacs.desktop', },
+	['emberscript'] = { 'em', 'emberscript', },
+	['erlang'] = { 'erl', 'es', 'escript', 'hrl', 'xrl', 'yrl', },
+	['f#'] = { 'fs', 'fsi', 'fsx', },
+	['flux'] = { 'fx', 'flux', },
+	['fortran'] = { 'f90', 'f', 'f03', 'f08', 'f77', 'f95', 'for', 'fpp', },
+	['factor'] = { 'factor', },
+	['fancy'] = { 'fy', 'fancypack', },
+	['fantom'] = { 'fan', },
+	['filterscript'] = { 'fs', },
+	['formatted'] = { 'for', 'eam.fs', },
+	['forth'] = { 'fth', '4th', 'f', 'for', 'forth', 'fr', 'frt', 'fs', },
+	['freemarker'] = { 'ftl', },
+	['frege'] = { 'fr', },
+	['g-code'] = { 'g', 'gco', 'gcode', },
+	['gams'] = { 'gms', },
+	['gap'] = { 'g', 'gap', 'gd', 'gi', 'tst', },
+	['gas'] = { 's', 'ms', },
+	['gdscript'] = { 'gd', },
+	['glsl'] = { 'glsl', 'fp', 'frag', 'frg', 'fs', 'fsh', 'fshader', 'geo', 'geom', 'glslv', 'gshader', 'shader', 'vert', 'vrx', 'vsh', 'vshader', },
+	['game maker language'] = { 'gml', },
+	['genshi'] = { 'kid', },
+	['gentoo ebuild'] = { 'ebuild', },
+	['gentoo eclass'] = { 'eclass', },
+	['gettext catalog'] = { 'po', 'pot', },
+	['glyph'] = { 'glf', },
+	['gnuplot'] = { 'gp', 'gnu', 'gnuplot', 'plot', 'plt', },
+	['go'] = { 'go', },
+	['golo'] = { 'golo', },
+	['gosu'] = { 'gs', 'gst', 'gsx', 'vark', },
+	['grace'] = { 'grace', },
+	['gradle'] = { 'gradle', },
+	['grammatical framework'] = { 'gf', },
+	['graph modeling language'] = { 'gml', },
+	['graphql'] = { 'graphql', },
+	['graphviz (dot)'] = { 'dot', 'gv', },
+	['groff'] = { 'man', '1', '1in', '1m', '1x', '2', '3', '3in', '3m', '3qt', '3x', '4', '5', '6', '7', '8', '9', 'l', 'me', 'ms', 'n', 'rno', 'roff', },
+	['groovy'] = { 'groovy', 'grt', 'gtpl', 'gvy', },
+	['groovy server pages'] = { 'gsp', },
+	['hcl'] = { 'hcl', 'tf', },
+	['hlsl'] = { 'hlsl', 'fx', 'fxh', 'hlsli', },
+	['html'] = { 'html', 'htm', 'html.hl', 'inc', 'st', 'xht', 'xhtml', },
+	['html+django'] = { 'mustache', 'jinja', },
+	['html+eex'] = { 'eex', },
+	['html+erb'] = { 'erb', 'erb.deface', },
+	['html+php'] = { 'phtml', },
+	['http'] = { 'http', },
+	['hack'] = { 'hh', 'php', },
+	['haml'] = { 'haml', 'haml.deface', },
+	['handlebars'] = { 'handlebars', 'hbs', },
+	['harbour'] = { 'hb', },
+	['haskell'] = { 'hs', 'hsc', },
+	['haxe'] = { 'hx', 'hxsl', },
+	['hy'] = { 'hy', },
+	['hyphy'] = { 'bf', },
+	['idl'] = { 'pro', 'dlm', },
+	['igor pro'] = { 'ipf', },
+	['ini'] = { 'ini', 'cfg', 'prefs', 'pro', 'properties', },
+	['irc log'] = { 'irclog', 'weechatlog', },
+	['idris'] = { 'idr', 'lidr', },
+	['inform 7'] = { 'ni', 'i7x', },
+	['inno setup'] = { 'iss', },
+	['io'] = { 'io', },
+	['ioke'] = { 'ik', },
+	['isabelle'] = { 'thy', },
+	['j'] = { 'ijs', },
+	['jflex'] = { 'flex', 'jflex', },
+	['json'] = { 'json', 'geojson', 'lock', 'topojson', },
+	['json5'] = { 'json5', },
+	['jsonld'] = { 'jsonld', },
+	['jsoniq'] = { 'jq', },
+	['jsx'] = { 'jsx', },
+	['jade'] = { 'jade', },
+	['jasmin'] = { 'j', },
+	['java'] = { 'java', },
+	['java server pages'] = { 'jsp', },
+	['javascript'] = { 'js', '_js', 'bones', 'es', 'es6', 'frag', 'gs', 'jake', 'jsb', 'jscad', 'jsfl', 'jsm', 'jss', 'njs', 'pac', 'sjs', 'ssjs', 'sublime-build', 'sublime-commands', 'sublime-completions', 'sublime-keymap', 'sublime-macro', 'sublime-menu', 'sublime-mousemap', 'sublime-project', 'sublime-settings', 'sublime-theme', 'sublime-workspace', 'sublime_metrics', 'sublime_session', 'xsjs', 'xsjslib', },
+	['julia'] = { 'jl', },
+	['jupyter notebook'] = { 'ipynb', },
+	['krl'] = { 'krl', },
+	['kicad'] = { 'sch', 'brd', 'kicad_pcb', },
+	['kit'] = { 'kit', },
+	['kotlin'] = { 'kt', 'ktm', 'kts', },
+	['lfe'] = { 'lfe', },
+	['llvm'] = { 'll', },
+	['lolcode'] = { 'lol', },
+	['lsl'] = { 'lsl', 'lslp', },
+	['labview'] = { 'lvproj', },
+	['lasso'] = { 'lasso', 'las', 'lasso8', 'lasso9', 'ldml', },
+	['latte'] = { 'latte', },
+	['lean'] = { 'lean', 'hlean', },
+	['less'] = { 'less', },
+	['lex'] = { 'l', 'lex', },
+	['lilypond'] = { 'ly', 'ily', },
+	['limbo'] = { 'b', 'm', },
+	['linker script'] = { 'ld', 'lds', },
+	['linux kernel module'] = { 'mod', },
+	['liquid'] = { 'liquid', },
+	['literate agda'] = { 'lagda', },
+	['literate coffeescript'] = { 'litcoffee', },
+	['literate haskell'] = { 'lhs', },
+	['livescript'] = { 'ls', '_ls', },
+	['logos'] = { 'xm', 'x', 'xi', },
+	['logtalk'] = { 'lgt', 'logtalk', },
+	['lookml'] = { 'lookml', },
+	['loomscript'] = { 'ls', },
+	['lua'] = { 'lua', 'fcgi', 'nse', 'pd_lua', 'rbxs', 'wlua', },
+	['m'] = { 'mumps', 'm', },
+	['m4'] = { 'm4', },
+	['m4sugar'] = { 'm4', },
+	['maxscript'] = { 'ms', 'mcr', },
+	['mtml'] = { 'mtml', },
+	['muf'] = { 'muf', 'm', },
+	['makefile'] = { 'mak', 'd', 'mk', 'mkfile', },
+	['mako'] = { 'mako', 'mao', },
+	['markdown'] = { 'md', 'markdown', 'mkd', 'mkdn', 'mkdown', 'ron', },
+	['mask'] = { 'mask', },
+	['mathematica'] = { 'mathematica', 'cdf', 'm', 'ma', 'mt', 'nb', 'nbp', 'wl', 'wlt', },
+	['matlab'] = { 'matlab', 'm', },
+	['max'] = { 'maxpat', 'maxhelp', 'maxproj', 'mxt', 'pat', },
+	['mediawiki'] = { 'mediawiki', 'wiki', },
+	['mercury'] = { 'm', 'moo', },
+	['metal'] = { 'metal', },
+	['minid'] = { 'minid', },
+	['mirah'] = { 'druby', 'duby', 'mir', 'mirah', },
+	['modelica'] = { 'mo', },
+	['modula-2'] = { 'mod', },
+	['module management system'] = { 'mms', 'mmk', },
+	['monkey'] = { 'monkey', },
+	['moocode'] = { 'moo', },
+	['moonscript'] = { 'moon', },
+	['myghty'] = { 'myt', },
+	['ncl'] = { 'ncl', },
+	['nl'] = { 'nl', },
+	['nsis'] = { 'nsi', 'nsh', },
+	['nemerle'] = { 'n', },
+	['netlinx'] = { 'axs', 'axi', },
+	['netlinx+erb'] = { 'axs.erb', 'axi.erb', },
+	['netlogo'] = { 'nlogo', },
+	['newlisp'] = { 'nl', 'lisp', 'lsp', },
+	['nginx'] = { 'nginxconf', 'vhost', },
+	['nimrod'] = { 'nim', 'nimrod', },
+	['ninja'] = { 'ninja', },
+	['nit'] = { 'nit', },
+	['nix'] = { 'nix', },
+	['nu'] = { 'nu', },
+	['numpy'] = { 'numpy', 'numpyw', 'numsc', },
+	['ocaml'] = { 'ml', 'eliom', 'eliomi', 'ml4', 'mli', 'mll', 'mly', },
+	['objdump'] = { 'objdump', },
+	['objective-c'] = { 'm', 'h', },
+	['objective-c++'] = { 'mm', },
+	['objective-j'] = { 'j', 'sj', },
+	['omgrofl'] = { 'omgrofl', },
+	['opa'] = { 'opa', },
+	['opal'] = { 'opal', },
+	['opencl'] = { 'cl', 'opencl', },
+	['openedge abl'] = { 'p', 'cls', },
+	['openscad'] = { 'scad', },
+	['org'] = { 'org', },
+	['ox'] = { 'ox', 'oxh', 'oxo', },
+	['oxygene'] = { 'oxygene', },
+	['oz'] = { 'oz', },
+	['pawn'] = { 'pwn', 'inc', },
+	['php'] = { 'php', 'aw', 'ctp', 'fcgi', 'inc', 'php3', 'php4', 'php5', 'phps', 'phpt', },
+	['plsql'] = { 'pls', 'pck', 'pkb', 'pks', 'plb', 'plsql', 'sql', },
+	['plpgsql'] = { 'sql', },
+	['pov-ray sdl'] = { 'pov', 'inc', },
+	['pan'] = { 'pan', },
+	['papyrus'] = { 'psc', },
+	['parrot'] = { 'parrot', },
+	['parrot assembly'] = { 'pasm', },
+	['parrot internal representation'] = { 'pir', },
+	['pascal'] = { 'pas', 'dfm', 'dpr', 'inc', 'lpr', 'pp', },
+	['perl'] = { 'pl', 'al', 'cgi', 'fcgi', 'perl', 'ph', 'plx', 'pm', 'pod', 'psgi', 't', },
+	['perl6'] = { '6pl', '6pm', 'nqp', 'p6', 'p6l', 'p6m', 'pl', 'pl6', 'pm', 'pm6', 't', },
+	['pickle'] = { 'pkl', },
+	['picolisp'] = { 'l', },
+	['piglatin'] = { 'pig', },
+	['pike'] = { 'pike', 'pmod', },
+	['pod'] = { 'pod', },
+	['pogoscript'] = { 'pogo', },
+	['pony'] = { 'pony', },
+	['postscript'] = { 'ps', 'eps', },
+	['powershell'] = { 'ps1', 'psd1', 'psm1', },
+	['processing'] = { 'pde', },
+	['prolog'] = { 'pl', 'pro', 'prolog', 'yap', },
+	['propeller spin'] = { 'spin', },
+	['protocol buffer'] = { 'proto', },
+	['public key'] = { 'asc', 'pub', },
+	['puppet'] = { 'pp', },
+	['pure data'] = { 'pd', },
+	['purebasic'] = { 'pb', 'pbi', },
+	['purescript'] = { 'purs', },
+	['python'] = { 'py', 'bzl', 'cgi', 'fcgi', 'gyp', 'lmi', 'pyde', 'pyp', 'pyt', 'pyw', 'rpy', 'tac', 'wsgi', 'xpy', },
+	['python traceback'] = { 'pytb', },
+	['qml'] = { 'qml', 'qbs', },
+	['qmake'] = { 'pro', 'pri', },
+	['r'] = { 'r', 'rd', 'rsx', },
+	['raml'] = { 'raml', },
+	['rdoc'] = { 'rdoc', },
+	['realbasic'] = { 'rbbas', 'rbfrm', 'rbmnu', 'rbres', 'rbtbar', 'rbuistate', },
+	['rhtml'] = { 'rhtml', },
+	['rmarkdown'] = { 'rmd', },
+	['racket'] = { 'rkt', 'rktd', 'rktl', 'scrbl', },
+	['ragel in ruby host'] = { 'rl', },
+	['raw token data'] = { 'raw', },
+	['rebol'] = { 'reb', 'r', 'r2', 'r3', 'rebol', },
+	['red'] = { 'red', 'reds', },
+	['redcode'] = { 'cw', },
+	['ren\'py'] = { 'rpy', },
+	['renderscript'] = { 'rs', 'rsh', },
+	['robotframework'] = { 'robot', },
+	['rouge'] = { 'rg', },
+	['ruby'] = { 'rb', 'builder', 'fcgi', 'gemspec', 'god', 'irbrc', 'jbuilder', 'mspec', 'pluginspec', 'podspec', 'rabl', 'rake', 'rbuild', 'rbw', 'rbx', 'ru', 'ruby', 'thor', 'watchr', },
+	['rust'] = { 'rs', 'rs.in', },
+	['sas'] = { 'sas', },
+	['scss'] = { 'scss', },
+	['smt'] = { 'smt2', 'smt', },
+	['sparql'] = { 'sparql', 'rq', },
+	['sqf'] = { 'sqf', 'hqf', },
+	['sql'] = { 'sql', 'cql', 'ddl', 'inc', 'prc', 'tab', 'udf', 'viw', },
+	['sqlpl'] = { 'sql', 'db2', },
+	['ston'] = { 'ston', },
+	['svg'] = { 'svg', },
+	['sage'] = { 'sage', 'sagews', },
+	['saltstack'] = { 'sls', },
+	['sass'] = { 'sass', },
+	['scala'] = { 'scala', 'sbt', 'sc', },
+	['scaml'] = { 'scaml', },
+	['scheme'] = { 'scm', 'sld', 'sls', 'sps', 'ss', },
+	['scilab'] = { 'sci', 'sce', 'tst', },
+	['self'] = { 'self', },
+	['shell'] = { 'sh', 'bash', 'bats', 'cgi', 'command', 'fcgi', 'ksh', 'sh.in', 'tmux', 'tool', 'zsh', },
+	['shellsession'] = { 'sh-session', },
+	['shen'] = { 'shen', },
+	['slash'] = { 'sl', },
+	['slim'] = { 'slim', },
+	['smali'] = { 'smali', },
+	['smalltalk'] = { 'st', 'cs', },
+	['smarty'] = { 'tpl', },
+	['sourcepawn'] = { 'sp', 'inc', 'sma', },
+	['squirrel'] = { 'nut', },
+	['stan'] = { 'stan', },
+	['standard ml'] = { 'ML', 'fun', 'sig', 'sml', },
+	['stata'] = { 'do', 'ado', 'doh', 'ihlp', 'mata', 'matah', 'sthlp', },
+	['stylus'] = { 'styl', },
+	['supercollider'] = { 'sc', 'scd', },
+	['swift'] = { 'swift', },
+	['systemverilog'] = { 'sv', 'svh', 'vh', },
+	['toml'] = { 'toml', },
+	['txl'] = { 'txl', },
+	['tcl'] = { 'tcl', 'adp', 'tm', },
+	['tcsh'] = { 'tcsh', 'csh', },
+	['tex'] = { 'tex', 'aux', 'bbx', 'bib', 'cbx', 'cls', 'dtx', 'ins', 'lbx', 'ltx', 'mkii', 'mkiv', 'mkvi', 'sty', 'toc', },
+	['tea'] = { 'tea', },
+	['terra'] = { 't', },
+	['text'] = { 'txt', 'fr', 'nb', 'ncl', 'no', },
+	['textile'] = { 'textile', },
+	['thrift'] = { 'thrift', },
+	['turing'] = { 't', 'tu', },
+	['turtle'] = { 'ttl', },
+	['twig'] = { 'twig', },
+	['typescript'] = { 'ts', 'tsx', },
+	['unified parallel c'] = { 'upc', },
+	['unity3d asset'] = { 'anim', 'asset', 'mat', 'meta', 'prefab', 'unity', },
+	['uno'] = { 'uno', },
+	['unrealscript'] = { 'uc', },
+	['urweb'] = { 'ur', 'urs', },
+	['vcl'] = { 'vcl', },
+	['vhdl'] = { 'vhdl', 'vhd', 'vhf', 'vhi', 'vho', 'vhs', 'vht', 'vhw', },
+	['vala'] = { 'vala', 'vapi', },
+	['verilog'] = { 'v', 'veo', },
+	['viml'] = { 'vim', },
+	['visual basic'] = { 'vb', 'bas', 'cls', 'frm', 'frx', 'vba', 'vbhtml', 'vbs', },
+	['volt'] = { 'volt', },
+	['vue'] = { 'vue', },
+	['web ontology language'] = { 'owl', },
+	['webidl'] = { 'webidl', },
+	['x10'] = { 'x10', },
+	['xc'] = { 'xc', },
+	['xml'] = { 'xml', 'ant', 'axml', 'ccxml', 'clixml', 'cproject', 'csl', 'csproj', 'ct', 'dita', 'ditamap', 'ditaval', 'dll.config', 'dotsettings', 'filters', 'fsproj', 'fxml', 'glade', 'gml', 'grxml', 'iml', 'ivy', 'jelly', 'jsproj', 'kml', 'launch', 'mdpolicy', 'mm', 'mod', 'mxml', 'nproj', 'nuspec', 'odd', 'osm', 'plist', 'pluginspec', 'props', 'ps1xml', 'psc1', 'pt', 'rdf', 'rss', 'scxml', 'srdf', 'storyboard', 'stTheme', 'sublime-snippet', 'targets', 'tmCommand', 'tml', 'tmLanguage', 'tmPreferences', 'tmSnippet', 'tmTheme', 'ts', 'tsx', 'ui', 'urdf', 'ux', 'vbproj', 'vcxproj', 'vssettings', 'vxml', 'wsdl', 'wsf', 'wxi', 'wxl', 'wxs', 'x3d', 'xacro', 'xaml', 'xib', 'xlf', 'xliff', 'xmi', 'xml.dist', 'xproj', 'xsd', 'xul', 'zcml', },
+	['xpages'] = { 'xsp-config', 'xsp.metadata', },
+	['xproc'] = { 'xpl', 'xproc', },
+	['xquery'] = { 'xquery', 'xq', 'xql', 'xqm', 'xqy', },
+	['xs'] = { 'xs', },
+	['xslt'] = { 'xslt', 'xsl', },
+	['xojo'] = { 'xojo_code', 'xojo_menu', 'xojo_report', 'xojo_script', 'xojo_toolbar', 'xojo_window', },
+	['xtend'] = { 'xtend', },
+	['yaml'] = { 'yml', 'reek', 'rviz', 'sublime-syntax', 'syntax', 'yaml', 'yaml-tmlanguage', },
+	['yang'] = { 'yang', },
+	['yacc'] = { 'y', 'yacc', 'yy', },
+	['zephir'] = { 'zep', },
+	['zimpl'] = { 'zimpl', 'zmpl', 'zpl', },
+	['desktop'] = { 'desktop', 'desktop.in', },
+	['ec'] = { 'ec', 'eh', },
+	['edn'] = { 'edn', },
+	['fish'] = { 'fish', },
+	['mupad'] = { 'mu', },
+	['nesc'] = { 'nc', },
+	['ooc'] = { 'ooc', },
+	['restructuredtext'] = { 'rst', 'rest', 'rest.txt', 'rst.txt', },
+	['wisp'] = { 'wisp', },
+	['xbase'] = { 'prg', 'ch', 'prw', },
 }
+
+extensions.cpp = extensions['c++']
+extensions.csharp = extensions['c#']
+extensions.latex = extensions.tex
+extensions.objc = extensions['objective-c']
+
+
+return M

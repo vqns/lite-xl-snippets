@@ -8,6 +8,10 @@ Copy the files into the editor's `plugins` directory.
 * `snippets.lua`: the base plugin which includes features such as snippet
 	expansion, tabbing through tabstops, etc.
 * `lsp_snippets.lua`: requires the base plugin; adds support for lsp/vscode style snippet.
+* `json.lua`: [rxi's json libray](https://github.com/rxi/json.lua), required to
+	load LSP snippets from json files. `lsp_snippets` will attempt to load it from
+	lint+ or the lsp plugin if they're in the plugin path, so it is only needed
+	if neither can be found.
 
 
 ### Examples
@@ -26,6 +30,17 @@ for ${1:i}, ${2:v} in ipairs($3) do
 	$0
 end
 ]]
+}
+```
+
+Adding LSP snippets from json files:
+
+```lua
+local lsp_snippets = require 'plugins.lsp_snippets'
+lsp_snippets.add_paths {
+	'snippets',                   -- relative paths are prefixed with the userdir
+	'/path/to/snippets/folder',
+	'/specific/snippet/file.json'
 }
 ```
 
@@ -84,6 +99,17 @@ to `shift+tab`.
 * `ac`: if the snippet was added as an autocompletion item, this function also returns
 	said item.
 
+`lsp_snippets.add_path(paths)`
+* `paths`: a single path or an array of paths.
+	* if a path is a relative path, then it is prefixed with the userdir, e.g
+	`snippets` -> `~/.config/lite-xl/snippets` if the userdir is `~/.config`.
+	* if it is a file, then it is added only if it has a valid file name in the
+		form of `languagename.json` (case is ignored).
+	* if it is a folder, then:
+		* all files with a valid name are added;
+		* subfolders with a language name have all their json files added,
+			regardless of their name (e.g `python/main.json`). This is not recursive,
+			e.g `python/python/main.json` will not work.
 
 `snippets.execute(snippet, doc, partial)` -> `true | nil`
 * `snippet`: the snippet to expand; it will be inserted at each cursor in `doc`.
