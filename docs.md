@@ -70,7 +70,7 @@ This means that the following three arrays are equivalent:
 
 -- same as above but with all the tables
 {
-	{ kind = 'static', value = text' },
+	{ kind = 'static', value = 'text' },
 	{ kind = 'static', value = funcion(ctx) return ctx.line end },
 	{ kind = 'static', value = {
 		{ kind = 'static', value = 'text2' },
