@@ -104,7 +104,7 @@ to `shift+tab`.
 	* if a path is a relative path, then it is prefixed with the userdir, e.g
 	`snippets` -> `~/.config/lite-xl/snippets` if the userdir is `~/.config`.
 	* if it is a file, then it is added only if it has a valid file name in the
-		form of `languagename.json` (case is ignored).
+		form of `languagename.json` (case is ignored) or ends with `.code-snippets`.
 	* if it is a folder, then:
 		* all files with a valid name are added;
 		* subfolders with a language name have all their json files added,

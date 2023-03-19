@@ -490,23 +490,6 @@ local files = { }
 local files2exts = { }
 local exts2files = { }
 
-local function add_file(filename, exts)
-	if files[filename] ~= nil or not filename:match('%.json$') then return end
-	if not exts then
-		local lang_name = filename:match('([^/%\\]*)%.%w*$'):lower()
-		exts = extensions[lang_name]
-		if not exts then return end
-	end
-	files[filename] = false
-	exts = type(exts) == 'string' and { exts } or exts
-	for _, e in ipairs(exts) do
-		files2exts[filename] = files2exts[filename] or { }
-		table.insert(files2exts[filename], '%.' .. e .. '$')
-		exts2files[e] = exts2files[e] or { }
-		table.insert(exts2files[e], filename)
-	end
-end
-
 local function parse_file(file)
 	if files[file] then return end
 
@@ -516,18 +499,71 @@ local function parse_file(file)
 	if not _f then return end
 	local r = json.decode(_f:read('a'))
 	_f:close()
+	if not r then return end
 
-	local exts = files2exts[file]
+	local exts = file:match('%.json$') and files2exts[file]
 	for i, s in pairs(r) do
-		local template = type(s.body) == 'table' and table.concat(s.body, '\n') or s.body
-		snippets.add {
-			trigger = s.prefix,
-			format = 'lsp',
-			files = exts,
-			info = i,
-			desc = s.description,
-			template = template
-		}
+		-- apparently body can be a single string
+		local template = type(s.body) ~= 'table' and s.body or table.concat(s.body, '\n')
+
+		-- https://code.visualstudio.com/docs/editor/userdefinedsnippets#_language-snippet-scope
+		local scope
+		if not exts then
+			if s.scope then
+				local tmp = { }
+				for _, l in ipairs(s.scope) do
+					for _, e in ipairs(extensions[l:lower()]) do
+						tmp[e] = true
+					end
+				end
+				scope = { }
+				for l in pairs(tmp) do
+					table.insert(scope, l)
+				end
+			end
+		end
+
+		-- prefix may be an array
+		local triggers = type(s.prefix) ~= 'table' and { s.prefix } or s.prefix
+
+		for _, t in ipairs(triggers) do
+			snippets.add {
+				trigger = t,
+				format = 'lsp',
+				files = exts or scope,
+				info = i,
+				desc = s.description,
+				template = template
+			}
+		end
+	end
+end
+
+local function add_file(filename, exts)
+	if files[filename] ~= nil then return end
+
+	if filename:match('%.code%-snippets$') then
+		files[filename] = false
+		core.add_thread(function()
+			parse_file(filename)
+		end)
+	end
+
+	if not filename:match('%.json$') then return end
+
+	if not exts then
+		local lang_name = filename:match('([^/%\\]*)%.%w*$'):lower()
+		exts = extensions[lang_name]
+		if not exts then return end
+	end
+
+	files[filename] = false
+	exts = type(exts) == 'string' and { exts } or exts
+	for _, e in ipairs(exts) do
+		files2exts[filename] = files2exts[filename] or { }
+		table.insert(files2exts[filename], '%.' .. e .. '$')
+		exts2files[e] = exts2files[e] or { }
+		table.insert(exts2files[e], filename)
 	end
 end
 
