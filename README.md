@@ -88,7 +88,8 @@ to `shift+tab`.
 	* `defaults`, `transforms`, `choices`, `matches`: (optional) See [docs.md](docs.md)
 	* `trigger`: if the autocomplete plugin is enabled, the given snippet will
 	  be added as a completion item with this trigger.
-	* `files`: when the autocompletion should be enabled. e.g `'%.lua$'` for lua files.
+	* `files`: Pattern to be matched against a filename to determine whether the
+		autocompletion should be enabled, e.g `'%.lua$'` for lua files.
 	* `info`: (optional) the name on the right of the trigger in the autocompletion menu.
 	* `desc`: (optional) the description that shows up in the autocompletion menu;
 	  defaults to the template, if any.
@@ -125,3 +126,20 @@ to `shift+tab`.
 ### Advanced
 
 See [docs.md](docs.md)
+
+
+### Notes
+
+* Adding snippets from json files requires the files to have a name that is a
+	'valid' language name; these names are defined in the `extensions` table
+	in `lsp_snippets.lua`. Snippets added through these names will be active
+	for the list of extensions they're mapped to. Adding a new language or
+	editing the extensions for a certain language can be done simply by requiring
+	`lsp_snippets` and modifying its `extensions` field:
+
+```lua
+local lsp_snippets = require 'plugins.lsp_snippets'
+
+-- not dot for the extensions, e.g `lua`, not `.lua`
+lsp_snippets.extensions['lang'] = { 'ext1', 'ext2' }
+```
