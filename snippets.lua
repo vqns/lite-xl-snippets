@@ -509,7 +509,6 @@ local function set_tabstop(snippets, id)
 	local rollback = doc.selections
 	doc.selections = { 0, 0, 0, 0 }
 	doc.last_selection = 1
-	doc:set_selection(1, 1, 1, 1)
 	for _, _s in ipairs(snippets) do
 		add_selections_for(_s, id)
 		if choices and _s.choices[id] then
@@ -536,7 +535,6 @@ end
 -- watching
 
 local raw_insert, raw_remove = Doc.raw_insert, Doc.raw_remove
-
 
 function Doc:raw_insert(l1, c1, t, undo, ...)
 	raw_insert(self, l1, c1, t, undo, ...)
@@ -749,7 +747,7 @@ function M.exit(snippets)
 	if p then
 		for _, _s in ipairs(snippets) do pop(_s) end
 		active[doc] = p
-		M.next(p)
+		M.next_or_exit(p)
 	else
 		if c then
 			set_tabstop(snippets, 0)
