@@ -508,18 +508,16 @@ local function parse_file(file)
 
 		-- https://code.visualstudio.com/docs/editor/userdefinedsnippets#_language-snippet-scope
 		local scope
-		if not exts then
-			if s.scope then
-				local tmp = { }
-				for _, l in ipairs(s.scope) do
-					for _, e in ipairs(extensions[l:lower()]) do
-						tmp[e] = true
-					end
+		if not exts and s.scope then
+			local tmp = { }
+			for _, l in ipairs(s.scope) do
+				for _, e in ipairs(extensions[l:lower()]) do
+					tmp[e] = true
 				end
-				scope = { }
-				for l in pairs(tmp) do
-					table.insert(scope, l)
-				end
+			end
+			scope = { }
+			for l in pairs(tmp) do
+				table.insert(scope, l)
 			end
 		end
 
