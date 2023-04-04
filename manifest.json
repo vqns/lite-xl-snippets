@@ -1,0 +1,19 @@
+{
+	"addons": [{
+		"id": "snippets",
+		"description": "Base plugin for code snippets support",
+		"path": "snippets.lua",
+		"version": "1",
+		"mod_version": "3"
+	}, {
+		"id": "lsp_snippets",
+		"description": "Adds LSP snippets support to the base snippets plugin"
+		"path": "lsp_snippets.lua",
+		"version": "1",
+		"mod_version": "3",
+		"dependencies": {
+			"snippets": { },
+			"json": { "optional": true }
+		}
+	}]
+}
