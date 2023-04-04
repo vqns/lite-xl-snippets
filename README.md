@@ -19,6 +19,7 @@ Copy the files into the editor's `plugins` directory.
 Adding an LSP style snippet with a `fori` trigger for lua files:
 
 ```lua
+local snippets = require 'plugins.snippets'
 snippets.add {
 	trigger  = 'fori',
 	files    = '%.lua$',
@@ -47,6 +48,7 @@ lsp_snippets.add_paths {
 Executing a snippet in the current doc at each cursor:
 
 ```lua
+local snippets = require 'plugins.snippets'
 snippets.execute {
 	format   = 'lsp',
 	template = [[
