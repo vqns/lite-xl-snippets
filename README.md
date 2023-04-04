@@ -7,7 +7,7 @@ Copy the files into the editor's `plugins` directory.
 
 * `snippets.lua`: the base plugin which includes features such as snippet
 	expansion, tabbing through tabstops, etc.
-* `lsp_snippets.lua`: requires the base plugin; adds support for lsp/vscode style snippet.
+* `lsp_snippets.lua`: requires the base plugin; adds support for lsp/vscode style snippets.
 * `json.lua`: [rxi's json library](https://github.com/rxi/json.lua), required to
 	load LSP snippets from json files. `lsp_snippets` will attempt to load it from
 	lint+ or the lsp plugin if they're in the plugin path, so it is only needed
@@ -23,8 +23,8 @@ local snippets = require 'plugins.snippets'
 snippets.add {
 	trigger  = 'fori',
 	files    = '%.lua$',
-	info     = 'ipairs',             -- optional, used by the autocomple menu
-	desc     = 'numerical for loop', -- optional, used by the autocomple menu
+	info     = 'ipairs',             -- optional, used by the autocomplete menu
+	desc     = 'numerical for loop', -- optional, used by the autocomplete menu
 	format   = 'lsp',                -- 'lsp' must be lowercase
 	template = [[
 for ${1:i}, ${2:v} in ipairs($3) do
