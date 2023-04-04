@@ -35,7 +35,7 @@ interactive, i.e tabstops.
 The resulting snippet is the concatenation of the values of all its nodes; no
 extra formatting is applied: there is no space, new line, tab, etc. inserted
 between nodes, with the exception that each line is indented at the same level
-as the line where the snippet was expanded (`context.indent_str`).
+as the line where the snippet was expanded (`ctx.indent_str`).
 
 
 #### Static nodes
@@ -145,7 +145,7 @@ which case only this function will be applied.
 ### Choices
 
 Choices allow specific given autocompletion suggestions when tabbing into a certain
-id. Choices may be added with a `choices` fields; its values are table of the
+id. Choices may be added with a `choices` field; its values are tables of the
 suggestions to autocomplete items.
 
 E.g simply adding plain text suggestions:
@@ -188,7 +188,7 @@ expand `fori` and automatically jump into its #1 tabstop.
 
 ### Matches
 
-Matches allow fetching (and remove) text before the snippet's trigger position.
+Matches allow fetching (and removing) text before the snippet's trigger position.
 Just like the defaults, transforms and choices, matches are added with a new field
 in the snippet:
 
@@ -359,7 +359,7 @@ Exiting has the following behavior:
 * if the snippets were nested, then selections are set as if calling `next_or_exit`
 	with the parent snippets.
 * else, if at least one snippet has a tastop with an id of 0, then selections are set
-	only for nodes with an id of 0. I.e no cursors for snippets without a final
+	only for nodes with an id of 0. I.e no cursor for snippets without a final
 	tabstop.
 * otherwise, a single cursor is placed at the end of each snippet.
 

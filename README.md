@@ -8,7 +8,7 @@ Copy the files into the editor's `plugins` directory.
 * `snippets.lua`: the base plugin which includes features such as snippet
 	expansion, tabbing through tabstops, etc.
 * `lsp_snippets.lua`: requires the base plugin; adds support for lsp/vscode style snippet.
-* `json.lua`: [rxi's json libray](https://github.com/rxi/json.lua), required to
+* `json.lua`: [rxi's json library](https://github.com/rxi/json.lua), required to
 	load LSP snippets from json files. `lsp_snippets` will attempt to load it from
 	lint+ or the lsp plugin if they're in the plugin path, so it is only needed
 	if neither can be found.
