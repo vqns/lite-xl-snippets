@@ -140,6 +140,6 @@ See [docs.md](docs.md)
 ```lua
 local lsp_snippets = require 'plugins.lsp_snippets'
 
--- not dot for the extensions, e.g `lua`, not `.lua`
+-- no dot for the extensions, e.g `lua`, not `.lua`
 lsp_snippets.extensions['lang'] = { 'ext1', 'ext2' }
 ```

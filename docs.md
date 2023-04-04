@@ -1,11 +1,7 @@
 Advanced usage doc
 
 
-### Nodes
-
-There is two kinds of nodes: `static` and `user` nodes. Static nodes are resolved
-once, when the snippet is first expanded; user nodes are node which will be
-interactive, i.e tabstops.
+### Context
 
 When a snippet is expanded, it is associated with a context (`ctx`):
 * `doc`: the doc in which it was expanded.
@@ -16,16 +12,31 @@ When a snippet is expanded, it is associated with a context (`ctx`):
 * `partial`: the partial symbol (e.g the trigger) or `''`.
 * `selection`: the cursor's selection or `''`.
 * `matches`: tables of the matches. See [matches](#Matches)
+* `indent_sz`, `indent_str`: the results of `doc:get_line_indent(l)` where l is
+   the line where the snippet is inserted.
 
 `at_line`, `at_col` and `line`, `col` will have different values if a partial
-or a selection is removed; or if the snippet has successful matches.
+or a selection is removed or if the snippet has successful matches.
 
 If a snippet is expanded multiple times at once (e.g multiple cursors), it is
-multiple independant snippets, each with their own context, which will be active
+multiple independent snippets, each with their own context, which will be active
 together at the same time (i.e their tabstops will be synchronized).
 
 If this is the case, snippets are inserted in bottom-to-top order in regard to
 the doc's selections.
+
+
+### Nodes
+
+There are two kinds of nodes: `static` and `user` nodes. Static nodes are resolved
+once, when the snippet is first expanded; user nodes are nodes which will be
+interactive, i.e tabstops.
+
+The resulting snippet is the concatenation of the values of all its nodes; no
+extra formatting is applied: there is no space, new line, tab, etc. inserted
+between nodes, with the exception that each line is indented at the same level
+as the line where the snippet was expanded (`context.indent_str`).
+
 
 #### Static nodes
 
@@ -45,7 +56,7 @@ where `value` may be:
 	according to these rules;
 * anything else: `tostring()`.
 
-The table wrapper is optional and the value may be directly inserted into the
+The table wrapper is optional, and the value may be directly inserted into the
 snippet's nodes.
 
 This means that the following three arrays are equivalent:
@@ -85,7 +96,7 @@ snippet is undefined.
 
 #### User nodes
 
-An user node ('tabstops') has the following schema:
+A user node ('tabstop') has the following schema:
 * `kind`: `'user'`
 * `id`: positive integer key. Tabstops will be iterated through in ascending order,
 	starting at 1. IDs do not need to be continuous; i.e `{ 2, 3, 6, 18 }` will
@@ -98,7 +109,8 @@ An user node ('tabstops') has the following schema:
 * `transform`: (optional) a transform function for this node only. see [transforms](#transforms)
 * `main`: (optional) specifies whether this node should be the 'main value' for this id.
 
-#### Defaults
+
+### Defaults
 
 Default values may be set for certain ids by adding a `defaults` fields to the
 snippet:
@@ -116,7 +128,8 @@ means that a default value may be e.g a function or may include other nodes.
 If a node has its own default, then it will use said default instead of the
 snippet-wide one.
 
-#### Transforms
+
+### Transforms
 
 Transforms are functions which are applied to the string value of a tabstop and
 return a string which will replace the old value. Transforms are applied for each
@@ -128,7 +141,8 @@ Transforms may be specified just like defaults: with a `transforms` field for
 a transform that applies to all tabstops with this id; or in a specific node, in
 which case only this function will be applied.
 
-#### Choices
+
+### Choices
 
 Choices allow specific given autocompletion suggestions when tabbing into a certain
 id. Choices may be added with a `choices` fields; its values are table of the
@@ -171,9 +185,10 @@ void $1($2) {
 Upon tabbing into #0 in `fun`, the autocomplete popup will have the option to
 expand `fori` and automatically jump into its #1 tabstop.
 
-#### Matches
 
-Matches allow to fetch (and remove) text before the snippet's trigger position.
+### Matches
+
+Matches allow fetching (and remove) text before the snippet's trigger position.
 Just like the defaults, transforms and choices, matches are added with a new field
 in the snippet:
 
@@ -189,7 +204,7 @@ snippets.add = {
 
 A match is a table with two fields:
 * `kind`: the type of pattern.
-	* `'lua'`: lua-based pattern.
+	* `'lua'`: lua based pattern.
 * `pattern`: the pattern to match the text against.
 
 If the given match is just a string, then it is assumed to be a lua pattern.
@@ -197,7 +212,7 @@ If it is neither a table nor a string, then it defaults to the lua pattern
 `'(%w+)[^%S\n]*$'` which is the previous word (of alphanumerics characters) on
 the same line.
 
-There is a few important rules regarding matches resolution:
+There are a few important rules regarding matches resolution:
 * matches are resolved backwards from the end of the text. This means that, for
 	any successful match, the text that the remaining matches will be tested against
 	is the text before the match. e.g, assuming match #1 is the first numeric word
@@ -237,8 +252,10 @@ on the next line.
 
 ### Templates
 
-Adding support for a template format is a matter of providing the snippets plugin
-a template -> nodes parser:
+When a snippet in template form is expanded, it is fed to the corresponding parser,
+which returns nodes that will be resolved and used to expand the snippet. Adding
+support for a template format is a matter of providing the snippets plugin a
+template -> nodes parser function:
 
 ```lua
 local snippets = require 'plugins.snippets'
@@ -274,4 +291,75 @@ snippets.add {
 	transforms = { [2] = string.lower }
 }
 ```
+
+
+### Builder
+
+For convenience, a builder api is included in `snippets.lua`:
+
+```lua
+local B = (require 'plugins.snippets').builder
+local snippet = B.new():s('local '):u(1):s(' = '):u(2):s('\n'):ok()
+snippet.trigger = 'loc'
+snippet.files = '%.lua$'
+snippets.add(snippet)
+```
+
+This adds a snippet equivalent to the LSP template `'local $1 = $2\n'`.
+
+API, where `B` is `snippets.builder` and `snippet` is a snippet as returned from
+any of these functions, except `B.static`, `B.user` and `ok`:
+
+* `B.new()` -> `snippet`: returns a new empty snippet
+* `B.static(value)` -> `node`: returns a static node
+* `B.user(id, default, transform)` -> `node`: returns a user node
+* `B.add(snippet, node)` -> `snippet`: adds a node to `snippet`
+	- `snippet:add(node)`
+	- `snippet:a(node)`
+* `B.choice(snippet, id, item)` -> `snippet`: adds a choice item for `id`
+	- `snippet:choice(id, item)`
+	- `snippet:c(id, item)`
+* `B.default(snippet, id, value)` -> `snippet`: sets the default value for `id`
+	- `snippet:default(id, value)`
+	- `snippet:d(id, value)`
+* `B.match(m)` -> `snippet`: adds a match to `snippet`
+	- `snippet:match(m)`
+	- `snippet:m(m)`
+* `B.transform(snippet, id, fn)` -> `snippet`: sets the transform for `id`
+	- `snippet:transform(id, fn)`
+	- `snippet:t(id, fn)`
+* `snippet:static(value)` -> `snippet`: adds a static node to `snippet`
+	- `snippet:s(value)`
+* `snippet:user(id, default, transform)` -> `snippet`: adds a user node to `snippet`
+	- `snippet:u(id, default, transform)`
+* `snippet:ok()` -> `snippet`: finalizes the snippet.
+
+
+### Controlling snippets
+
+The function `snippets.in_snippet(doc)` returns a table which contains the active
+snippets in the current doc or the given one. If there is no current doc or it
+does not have active snippets, this returns `nil`. This table must not be modified;
+it can however be used to call the following functions, where it is called `active`:
+	
+* `snippets.select_current(active)`: selects the values of the current tabstop
+* `snippets.next(active)`: sets selections for the next tabstop
+* `snippets.previous(active)`: sets selections for the previous tabstop
+* `snippets.exit(active)`: exits the snippets
+* `snippets.next_or_exit(active)`: if on the last tabstop, exits; otherwise, sets
+	the next tabstop
+
+Cycling through tabstops wraps around as `max -> 1` for `next` and `1 -> max` for
+`previous`; where max is the 'last' tabstop, i.e the tabstop with the highest id.
+
+Changing the tabstop will trigger transforms; this means that `select_current`
+will _not_ do so, as the tabstop does not change.
+
+Exiting has the following behavior:
+* if the snippets were nested, then selections are set as if calling `next_or_exit`
+	with the parent snippets.
+* else, if at least one snippet has a tastop with an id of 0, then selections are set
+	only for nodes with an id of 0. I.e no cursors for snippets without a final
+	tabstop.
+* otherwise, a single cursor is placed at the end of each snippet.
 
