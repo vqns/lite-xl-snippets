@@ -7,11 +7,13 @@ Copy the files into the editor's `plugins` directory.
 
 * `snippets.lua`: the base plugin which includes features such as snippet
 	expansion, tabbing through tabstops, etc.
-* `lsp_snippets.lua`: requires the base plugin; adds support for lsp/vscode style snippets.
+* `lsp_snippets.lua`: requires the base plugin; adds support for
+	[lsp](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#snippet_syntax)
+	/ [vscode](https://code.visualstudio.com/docs/editor/userdefinedsnippets) style snippets.
 * `json.lua`: [rxi's json library](https://github.com/rxi/json.lua), required to
 	load LSP snippets from json files. `lsp_snippets` will attempt to load it from
 	lint+ or the lsp plugin if they're in the plugin path, so it is only needed
-	if neither can be found.
+	if neither can be found. See the [notes](#Notes) for details.
 
 
 ### Examples
@@ -102,7 +104,17 @@ to `shift+tab`.
 * `ac`: if the snippet was added as an autocompletion item, this function also returns
 	said item.
 
-`lsp_snippets.add_path(paths)`
+`snippets.execute(snippet, doc, partial)` -> `true | nil`
+* `snippet`: the snippet to expand; it will be inserted at each cursor in `doc`.
+	This is either an id returned from `snippets.add` or a snippet as would be
+	given to `snippets.add`.
+* `doc`: the doc in which to expand the snippet; if nil, the current doc is used.
+* `partial`: if truthy, remove the 'partial symbol', e.g the current selection or
+	the trigger if expanded from an autocompletion.
+
+* this function returns `true` if it successfully completed; `nil` otherwise.
+
+`lsp_snippets.add_paths(paths)`
 * `paths`: a single path or an array of paths.
 	* if a path is a relative path, then it is prefixed with the userdir, e.g
 	`snippets` -> `~/.config/lite-xl/snippets` if the userdir is `~/.config`.
@@ -114,16 +126,6 @@ to `shift+tab`.
 			regardless of their name (e.g `python/main.json`). This is not recursive,
 			e.g `python/python/main.json` will not work.
 
-`snippets.execute(snippet, doc, partial)` -> `true | nil`
-* `snippet`: the snippet to expand; it will be inserted at each cursor in `doc`.
-	This is either an id returned from `snippets.add` or a snippet as would be
-	given to `snippets.add`.
-* `doc`: the doc in which to expand the snippet; if nil, the current doc is used.
-* `partial`: if truthy, remove the 'partial symbol', e.g the current selection or
-	the trigger if expanded from an autocompletion.
-
-* this function returns `true` if it successfully completed; `nil` otherwise.
-
 
 ### Advanced
 
@@ -133,15 +135,20 @@ See [docs.md](docs.md)
 ### Notes
 
 * Adding snippets from json files requires the files to have a name that is a
-	'valid' language name; these names are defined in the `extensions` table
+	'valid' language name or to have the `.code-snippets` extension. See the
+	[vscode spec](https://code.visualstudio.com/docs/editor/userdefinedsnippets#_create-your-own-snippets).
+	These language names are defined in the `extensions` table
 	in `lsp_snippets.lua`. Snippets added through these names will be active
 	for the list of extensions they're mapped to. Adding a new language or
 	editing the extensions for a certain language can be done simply by requiring
 	`lsp_snippets` and modifying its `extensions` field:
 
-```lua
-local lsp_snippets = require 'plugins.lsp_snippets'
+	```lua
+	local lsp_snippets = require 'plugins.lsp_snippets'
 
--- no dot for the extensions, e.g `lua`, not `.lua`
-lsp_snippets.extensions['lang'] = { 'ext1', 'ext2' }
-```
+	-- no dot for the extensions, e.g `lua`, not `.lua`
+	lsp_snippets.extensions['lang'] = { 'ext1', 'ext2' }
+	```
+
+	Snippet files may be found at [friendly snippets](https://github.com/rafamadriz/friendly-snippets)
+	or in [vscode extensions](https://marketplace.visualstudio.com/VSCode).
