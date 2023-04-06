@@ -660,6 +660,9 @@ end
 function M.remove(id)
 	raws[id] = nil
 	cache[id] = nil
+	if autocomplete then
+		autocomplete.map[id] = nil
+	end
 end
 
 function M.execute(snippet, doc, partial)
