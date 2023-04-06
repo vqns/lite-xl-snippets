@@ -12,13 +12,10 @@ local regex    = require 'regex'
 local snippets = require 'plugins.snippets'
 
 local json do
-	local ok, j = pcall(require, 'plugins.json')
-	if not ok then
-		local extra_paths = { 'lsp', 'lintplus' }
-		for _, p in ipairs(extra_paths) do
-			ok, j = pcall(require, 'plugins.' .. p .. '.json')
-			if ok then break end
-		end
+	local ok, j 
+	for _, p in ipairs { 'plugins.json', 'plugins.lsp.json', 'plugins.lintplus.json' } do
+		ok, j = pcall(require, p)
+		if ok then break end
 	end
 	json = ok and j
 end
@@ -405,7 +402,7 @@ local t = setmetatable({ },
 	}
 )
 
-P.int = P(pattern('%d+'))
+P.int = pattern('%d+')
 
 P.var = pattern('[%a_][%w_]*')
 
@@ -496,15 +493,25 @@ local function parse_file(file)
 	files[file] = true
 
 	local _f = io.open(file)
-	if not _f then return end
-	local r = json.decode(_f:read('a'))
+	if not _f then
+		core.error('[LSP snippets] Could not open \'%s\'', file)
+		return
+	end
+	local ok, r = pcall(json.decode, _f:read('a'))
 	_f:close()
-	if not r then return end
+	if not ok then
+		core.error('[LSP snippets] %s: %s', file, r:match('%d+:%s+(.*)'))
+		return
+	end
 
 	local exts = file:match('%.json$') and files2exts[file]
 	for i, s in pairs(r) do
 		-- apparently body can be a single string
-		local template = type(s.body) ~= 'table' and s.body or table.concat(s.body, '\n')
+		local template = type(s.body) == 'table' and table.concat(s.body, '\n') or s.body
+		if not template or template == '' then
+			core.warn('[LSP snippets] missing \'body\' for %s (%s)', i, file)
+			goto continue
+		end
 
 		-- https://code.visualstudio.com/docs/editor/userdefinedsnippets#_language-snippet-scope
 		local scope
@@ -523,6 +530,10 @@ local function parse_file(file)
 
 		-- prefix may be an array
 		local triggers = type(s.prefix) ~= 'table' and { s.prefix } or s.prefix
+		if #triggers == 0 then
+			core.warn('[LSP snippets] missing \'prefix\' for %s (%s)', i, file)
+			goto continue
+		end
 
 		for _, t in ipairs(triggers) do
 			snippets.add {
@@ -534,6 +545,8 @@ local function parse_file(file)
 				template = template
 			}
 		end
+
+		::continue::
 	end
 end
 
@@ -596,7 +609,13 @@ local M = { }
 function M.parse(template)
 	local _s = B.new()
 	local r = P.snippet(template, 1, _s)
-	return r.ok and r.at == #template + 1 and r.value or B.new():s(template):ok()
+	if not r.ok then
+		return B.new():s(template):ok()
+	elseif r.at == #template + 1 then
+		return r.value
+	else
+		return _s:s(template:sub(r.at + 1)):ok()
+	end
 end
 
 snippets.parsers.lsp = M.parse
@@ -605,7 +624,7 @@ local warned = false
 function M.add_paths(paths)
 	if not json then
 		if not warned then
-			core.error('Could not add snippet files: JSON plugin not found')
+			core.error('[LSP snippets] Could not add snippet file(s): JSON plugin not found')
 			warned = true
 		end
 		return
