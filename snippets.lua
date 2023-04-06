@@ -55,8 +55,9 @@ local function copy_snippet(_s)
 end
 
 local function autocomplete_cleanup()
-	autocomplete.map_manually[AUTOCOMPLETE_KEY] = { }
+	autocomplete.map_manually[AUTOCOMPLETE_KEY] = nil
 end
+
 
 -- trigger
 
@@ -521,8 +522,6 @@ local function set_tabstop(snippets, id)
 		doc:remove_selection(1)
 	end
 	snippets.last_id = id
-	-- todo: fix completions not always showing
-	-- (seems to often miss on the 1st time on the 1st tabstop)
 	if choices then
 		autocomplete.complete(
 			{ name = AUTOCOMPLETE_KEY, items = choices },
@@ -676,6 +675,15 @@ function M.execute(snippet, doc, partial)
 
 	if not _s then return end
 
+	-- special handling of autocomplete
+	-- suggestions are only reset after the item has been handled
+	-- i.e once this function (M.execute) returns
+	-- so at this point here, it still has old suggestions,
+	-- including manually added snippet choices
+	if partial and autocomplete then
+		autocomplete.close()
+	end
+
 	partial = partial and get_partial(doc)
 	local snippets = { }
 
@@ -706,6 +714,16 @@ function M.execute(snippet, doc, partial)
 		M.next(a)
 	else
 		M.exit(a)
+	end
+
+	-- special handling of autocomplete pt 2
+	-- since suggestions are reset once this function returns,
+	-- this means that choices for the 1st tabstop will be removed
+	-- so use on_close to reopen them as a workaround
+	if autocomplete and autocomplete.map_manually[AUTOCOMPLETE_KEY] then
+		autocomplete.on_close = function()
+			autocomplete.open(autocomplete_cleanup)
+		end
 	end
 
 	return true
