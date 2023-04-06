@@ -881,11 +881,11 @@ end
 
 local function _ok(snippet)
 	return {
-		nodes      = snippet.nodes,
-		choices    = snippet.choices,
-		defaults   = snippet.defaults,
-		matches    = snippet.matches,
-		transforms = snippet.transforms
+		nodes      = common.merge(snippet.nodes),
+		choices    = common.merge(snippet.choices),
+		defaults   = common.merge(snippet.defaults),
+		matches    = common.merge(snippet.matches),
+		transforms = common.merge(snippet.transforms)
 	}
 end
 
