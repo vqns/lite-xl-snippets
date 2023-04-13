@@ -1,4 +1,4 @@
---mod-version:3
+-- mod-version:3
 
 -- LSP style snippet parser
 -- shamelessly 'inspired by' (stolen from) LuaSnip

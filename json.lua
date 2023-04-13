@@ -1,4 +1,4 @@
---mod-version:3
+-- mod-version:3
 
 --
 -- json.lua
@@ -388,4 +388,3 @@ end
 
 
 return json
-

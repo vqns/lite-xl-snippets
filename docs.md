@@ -65,14 +65,14 @@ This means that the following three arrays are equivalent:
 -- simplest form
 {
 	'text',
-	funcion(ctx) return ctx.line end,
+	function(ctx) return ctx.line end,
 	'text2text3'
 }
 
 -- the table at index 3 is inserted as is, and so is the 2nd function's return
 {
 	'text',
-	funcion(ctx) return ctx.line end,
+	function(ctx) return ctx.line end,
 	{
 		'text2',
 		function() return 'text3' end
@@ -82,7 +82,7 @@ This means that the following three arrays are equivalent:
 -- same as above but with all the tables
 {
 	{ kind = 'static', value = 'text' },
-	{ kind = 'static', value = funcion(ctx) return ctx.line end },
+	{ kind = 'static', value = function(ctx) return ctx.line end },
 	{ kind = 'static', value = {
 		{ kind = 'static', value = 'text2' },
 		{ kind = 'static', value = function() return 'text3' end }
@@ -122,7 +122,7 @@ snippet = {
 }
 ```
 
-These values are resolved through the same coercion rules as a static node, which
+These values are resolved through the same coercion rules as static nodes, which
 means that a default value may be e.g a function or may include other nodes.
 
 If a node has its own default, then it will use said default instead of the

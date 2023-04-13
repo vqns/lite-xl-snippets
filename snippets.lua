@@ -1,4 +1,4 @@
---mod-version:3
+-- mod-version:3
 
 
 local core      = require 'core'
@@ -62,7 +62,7 @@ end
 -- trigger
 
 local function get_raw(raw)
-    local _s = { }
+	local _s = { }
 
 	if raw.template then
 		local parser = parsers[raw.format or DEFAULT_FORMAT]
@@ -73,32 +73,32 @@ local function get_raw(raw)
 		local _p = parser(raw.template)
 		if not _p or not _p.nodes then return end
 		_s.nodes = common.merge(_p.nodes)
-        for _, v in ipairs(SNIPPET_FIELDS) do
-            _s[v] = _p[v]
-        end
-    elseif raw.nodes then
-        _s.nodes = common.merge(raw.nodes)
-    else
-        return
+		for _, v in ipairs(SNIPPET_FIELDS) do
+			_s[v] = _p[v]
+		end
+	elseif raw.nodes then
+		_s.nodes = common.merge(raw.nodes)
+	else
+		return
 	end
 
-    for _, v in ipairs(SNIPPET_FIELDS) do
-        _s[v] = common.merge(_s[v], raw[v])
-    end
+	for _, v in ipairs(SNIPPET_FIELDS) do
+		_s[v] = common.merge(_s[v], raw[v])
+	end
 
-    return _s
+	return _s
 end
 
 local function get_by_id(id)
-    local _s
-    if cache[id] then
-        _s = deep_copy(cache[id])
-    elseif raws[id] then
-        _s = get_raw(raws[id])
-        if not _s then return end
-        cache[id] = deep_copy(_s)
-    end
-    return _s
+	local _s
+	if cache[id] then
+		_s = deep_copy(cache[id])
+	elseif raws[id] then
+		_s = get_raw(raws[id])
+		if not _s then return end
+		cache[id] = deep_copy(_s)
+	end
+	return _s
 end
 
 local function get_partial(doc)
@@ -138,7 +138,11 @@ end
 
 local function match(pattern, text)
 	if text == '' then return '', text end
-	if type(pattern) ~= 'table' then pattern = DEFAULT_PATTERN end
+	if type(pattern) == 'string' then
+		pattern = { kind = 'lua', pattern = pattern }
+	elseif type(pattern) ~= 'table' then
+		pattern = DEFAULT_PATTERN
+	end
 
 	local matches = ''
 	local function lua_cb(...)
@@ -667,7 +671,7 @@ end
 
 function M.execute(snippet, doc, partial)
 	doc = doc or core.active_view.doc
-    if not doc then return end
+	if not doc then return end
 
 	local _t, _s = type(snippet)
 	if _t == 'number' then
@@ -797,8 +801,8 @@ end
 function M.in_snippet(doc)
 	doc = doc or core.active_view.doc
 	if not doc then return end
-    local t = active[doc]
-    if t and #t > 0 then return t, t end
+	local t = active[doc]
+	if t and #t > 0 then return t, t end
 end
 
 
@@ -813,9 +817,9 @@ command.add(M.in_snippet, {
 })
 
 keymap.add {
-    ['tab']       = 'snippets:next-or-exit',
-    ['shift+tab'] = 'snippets:previous',
-    ['escape']    = 'snippets.exit'
+	['tab']       = 'snippets:next-or-exit',
+	['shift+tab'] = 'snippets:previous',
+	['escape']    = 'snippets.exit'
 }
 
 do -- 'next' is added to keymap after 'complete' so it overrides autocomplete

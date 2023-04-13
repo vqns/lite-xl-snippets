@@ -147,8 +147,10 @@ See [docs.md](docs.md)
 	local lsp_snippets = require 'plugins.lsp_snippets'
 
 	-- no dot for the extensions, e.g `lua`, not `.lua`
+	-- both the name and the extensions must be lowercase
 	lsp_snippets.extensions['lang'] = { 'ext1', 'ext2' }
 	```
 
-	Snippet files may be found at [friendly snippets](https://github.com/rafamadriz/friendly-snippets)
+	Snippet files may be found at
+	[rafamadriz/friendly-snippets](https://github.com/rafamadriz/friendly-snippets)
 	or in [vscode extensions](https://marketplace.visualstudio.com/VSCode).
