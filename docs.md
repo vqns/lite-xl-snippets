@@ -203,17 +203,7 @@ expand `fori` and automatically jump into its #1 tabstop.
 
 Matches allow fetching (and removing) text before the snippet's trigger position.
 Just like defaults, transforms and choices, matches are added with a new field
-in the snippet:
-
-```lua
-snippets.add {
-    ...,
-    matches = {
-        [1] = ...,
-        [2] = ...
-    }
-}
-```
+in the snippet.
 
 A match is a table with two fields:
 *   `kind`: the type of pattern.
