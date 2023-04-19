@@ -62,25 +62,31 @@ end
 -- trigger
 
 local function get_raw(raw)
-	local _s = { }
+	local _s
 
 	if raw.template then
-		local parser = parsers[raw.format or DEFAULT_FORMAT]
-		if not parser then
-			core.warn('No parser for format: %s', raw.format)
-			return
-		end
-		local _p = parser(raw.template)
-		if not _p or not _p.nodes then return end
-		_s.nodes = common.merge(_p.nodes)
-		for _, v in ipairs(SNIPPET_FIELDS) do
-			_s[v] = _p[v]
+		local fmt = raw.format or DEFAULT_FORMAT
+		_s = cache[fmt] and deep_copy(cache[fmt][raw.template])
+		if not _s then
+			local parser = parsers[fmt]
+			if not parser then
+				core.warn('No parser for format: %s', raw.format)
+				return
+			end
+			local _p = parser(raw.template)
+			if not _p or not _p.nodes then return end
+			_s = { nodes = common.merge(_p.nodes) }
+			for _, v in ipairs(SNIPPET_FIELDS) do
+				_s[v] = _p[v]
+			end
+			cache[fmt] = cache[fmt] or { }
+			cache[fmt][raw.template] = deep_copy(_s)
 		end
 	elseif raw.nodes then
-		_s.nodes = common.merge(raw.nodes)
-	else
-		return
+		_s = { common.merge(raw.nodes) }
 	end
+
+	if not _s then return end
 
 	for _, v in ipairs(SNIPPET_FIELDS) do
 		_s[v] = common.merge(_s[v], raw[v])
@@ -90,15 +96,8 @@ local function get_raw(raw)
 end
 
 local function get_by_id(id)
-	local _s
-	if cache[id] then
-		_s = deep_copy(cache[id])
-	elseif raws[id] then
-		_s = get_raw(raws[id])
-		if not _s then return end
-		cache[id] = deep_copy(_s)
-	end
-	return _s
+	local raw = raws[id]
+	return raw and get_raw(raw)
 end
 
 local function get_partial(doc)
