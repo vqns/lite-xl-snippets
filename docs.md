@@ -5,6 +5,7 @@ Advanced usage doc
 
 When a snippet is expanded, it is associated with a context (`ctx`):
 *   `doc`: the doc in which it was expanded.
+*   `cursor_idx`: the index of the cursor.
 *   `at_line`: line index of the cursor when `snippets.execute` was called.
 *   `at_col`: col index of the cursor when `snippets.execute` was called.
 *   `line`: line index of where the snippet is inserted.
@@ -12,6 +13,7 @@ When a snippet is expanded, it is associated with a context (`ctx`):
 *   `partial`: the partial symbol (e.g the trigger) or `''`.
 *   `selection`: the cursor's selection or `''`.
 *   `matches`: tables of the matches. See [matches](#Matches)
+*   `removed_from_matches`: the text that was removed due to matches.
 *   `indent_sz`, `indent_str`: the results of `doc:get_line_indent(l)` where `l` is
     the line where the snippet is inserted.
 

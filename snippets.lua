@@ -108,13 +108,13 @@ local function get_partial(doc)
 	return partial
 end
 
-local function remove_partial(ctx, partial, l1, c1, l2, c2)
-	if l1 ~= l2 or c1 ~= c2 then
-		ctx.selection = ctx.doc:get_text(l1, c1, l2, c2)
-		ctx.doc:remove(l1, c1, l2, c2)
-		return c1
-	end
+local function remove_selection(ctx, l1, c1, l2, c2)
+	ctx.selection = ctx.doc:get_text(l1, c1, l2, c2)
+	ctx.doc:remove(l1, c1, l2, c2)
+	return c1
+end
 
+local function remove_partial(ctx, partial, l1, c1, l2, c2)
 	local sz = #partial
 	if sz == 0 then return c1 end
 
@@ -428,7 +428,7 @@ local function transforms_for(_s, id)
 
 		local v = doc:get_text(w.start_line, w.start_col, w.end_line, w.end_col)
 		local r = type(n.value) == 'table' and n.value or nil
-		v = n.transform(v, r)
+		v = n.transform(v, r) or ''
 		doc:remove(w.start_line, w.start_col, w.end_line, w.end_col)
 		doc:insert(w.start_line, w.start_col, v)
 		w.dirty = false
@@ -682,7 +682,7 @@ function M.execute(snippet, doc, partial)
 
 	if not _s then return end
 
-	-- special handling of autocomplete
+	-- special handling of autocomplete pt 1
 	-- suggestions are only reset after the item has been handled
 	-- i.e once this function (M.execute) returns
 	-- so at this point here, it still has old suggestions,
@@ -696,9 +696,18 @@ function M.execute(snippet, doc, partial)
 
 	for idx, l1, c1, l2, c2 in doc:get_selections(true, true) do
 		snippet = idx > 1 and copy_snippet(_s) or _s
-		local ctx = { doc = doc, at_line = l1, at_col = c1, partial = '', selection = '' }
+		local ctx = {
+			doc = doc,
+			cursor_idx = idx,
+			at_line = l1, at_col = c1,
+			partial = '', selection = ''
+		}
 
-		if partial then c1 = remove_partial(ctx, partial, l1, c1, l2, c2) end
+		if l1 ~= l2 or c1 ~= c2 then
+			c1 = remove_selection(ctx, l1, c1, l2, c2)
+		elseif partial then
+			c1 = remove_partial(ctx, partial, l1, c1, l2, c2)
+		end
 		get_matches(_s.matches, ctx, l1, c1, idx)
 
 		snippet.ctx = ctx
@@ -767,7 +776,6 @@ function M.exit(snippets)
 	local p = snippets.parent
 
 	if snippets.last_id ~= 0 then transforms(snippets, snippets.last_id) end
-	if c then transforms(snippets, 0) end
 
 	if p then
 		for _, _s in ipairs(snippets) do pop(_s) end
