@@ -443,35 +443,24 @@ local function transforms(snippets, id)
 	end
 end
 
-local function add_selection_after(_s)
-	local w = _s.watch
-	_s.ctx.doc:add_selection(w.end_line, w.end_col)
+-- docview crashes while updating if the doc doesnt have selections
+-- so instead gather all new selections & set it at once
+local function selection_for_watch(sels, w, end_only)
+	table.insert(sels, w.end_line)
+	table.insert(sels, w.end_col)
+	table.insert(sels, end_only and w.end_line or w.start_line)
+	table.insert(sels, end_only and w.end_col  or w.start_col)
 end
 
 local function select_after(snippets)
 	local doc = snippets.doc
-	local rollback = doc.selections
-	doc.selections = { 0, 0, 0, 0 }
-	doc.last_selection = 1
+	local new_sels = { }
 	for _, _s in ipairs(snippets) do
-		add_selection_after(_s)
+		selection_for_watch(new_sels, _s.watch, true)
 	end
-	if #doc.selections == 4 then
-		doc.selections = rollback
-	else
-		doc:remove_selection(1)
-	end
-end
-
-local function add_selections_for(_s, id)
-	local nodes = _s.tabstops[id]
-	if not nodes or nodes.count == 0 then return end
-	local doc = _s.ctx.doc
-	for n in pairs(nodes) do
-		if n ~= 'count' then
-			local w = n.watch
-			doc:add_selection(w.end_line, w.end_col, w.start_line, w.start_col)
-		end
+	if #new_sels > 0 then
+		doc.selections = new_sels
+		doc.last_selection = #new_sels / 4
 	end
 end
 
@@ -510,28 +499,33 @@ end
 local function set_tabstop(snippets, id)
 	local doc = snippets.doc
 	local choices = autocomplete and { }
-	-- docview crashes while updating if the doc doesnt have selections
-	local rollback = doc.selections
-	doc.selections = { 0, 0, 0, 0 }
-	doc.last_selection = 1
+	local new_sels = { }
+
 	for _, _s in ipairs(snippets) do
-		add_selections_for(_s, id)
+		local nodes = _s.tabstops[id]
+		if not nodes or nodes.count == 0 then goto continue end
+		for n in pairs(nodes) do
+			if n ~= 'count' then
+				selection_for_watch(new_sels, n.watch)
+			end
+		end
+		::continue::
 		if choices and _s.choices[id] then
 			for k, v in pairs(_s.choices[id]) do choices[k] = v end
 		end
 	end
-	if #doc.selections == 4 then
-		doc.selections = rollback
-	else
-		doc:remove_selection(1)
+
+	if #new_sels > 0 then
+		doc.selections = new_sels
+		doc.last_selection = #new_sels / 4
+		if choices then
+			autocomplete.complete(
+				{ name = AUTOCOMPLETE_KEY, items = choices },
+				autocomplete_cleanup
+			)
+		end
 	end
 	snippets.last_id = id
-	if choices then
-		autocomplete.complete(
-			{ name = AUTOCOMPLETE_KEY, items = choices },
-			autocomplete_cleanup
-		)
-	end
 end
 
 
