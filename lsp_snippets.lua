@@ -24,6 +24,7 @@ end
 local B = snippets.builder
 
 local LAST_CONVERTED_ID = { }
+local THREAD_KEY = { }
 
 
 -- node factories
@@ -482,15 +483,15 @@ P.snippet = P(rep(P.any), build_snippet)
 -- defined at the end of the file
 local extensions
 
+local fstate = { NOT_DONE = 'not done', QUEUED = 'queued', DONE = 'done' }
+local queue = { }
 local files = { }
-
 local files2exts = { }
 local exts2files = { }
 
 local function parse_file(file)
-	if files[file] then return end
-
-	files[file] = true
+	if files[file] == fstate.DONE then return end
+	files[file] = fstate.DONE
 
 	local _f = io.open(file)
 	if not _f then
@@ -501,7 +502,7 @@ local function parse_file(file)
 	_f:close()
 	if not ok then
 		core.error('[LSP snippets] %s: %s', file, r:match('%d+:%s+(.*)'))
-		return
+		return false
 	end
 
 	local exts = file:match('%.json$') and files2exts[file]
@@ -548,16 +549,30 @@ local function parse_file(file)
 
 		::continue::
 	end
+
+	return true
+end
+
+local function pop()
+	while #queue > 0 do
+		repeat until parse_file(table.remove(queue)) ~= nil
+		if #queue > 0 then coroutine.yield() end
+	end
+end
+
+local function enqueue(filename)
+	if not core.threads[THREAD_KEY] then
+		core.add_thread(pop, THREAD_KEY)
+	end
+	files[filename] = fstate.QUEUED
+	table.insert(queue, filename)
 end
 
 local function add_file(filename, exts)
-	if files[filename] ~= nil then return end
+	if files[filename] then return end
 
 	if filename:match('%.code%-snippets$') then
-		files[filename] = false
-		core.add_thread(function()
-			parse_file(filename)
-		end)
+		enqueue(filename)
 	end
 
 	if not filename:match('%.json$') then return end
@@ -568,7 +583,7 @@ local function add_file(filename, exts)
 		if not exts then return end
 	end
 
-	files[filename] = false
+	files[filename] = fstate.NOT_DONE
 	exts = type(exts) == 'string' and { exts } or exts
 	for _, e in ipairs(exts) do
 		files2exts[filename] = files2exts[filename] or { }
@@ -582,10 +597,12 @@ local function for_filename(name)
 	if not name then return end
 	local ext = name:match('%.(.*)$')
 	if not ext then return end
-	local files = exts2files[ext]
-	if not files then return end
-	for _, f in ipairs(files) do
-		parse_file(f)
+	local _files = exts2files[ext]
+	if not _files then return end
+	for _, f in ipairs(_files) do
+		if files[f] == fstate.NOT_DONE then
+			enqueue(f)
+		end
 	end
 end
 
