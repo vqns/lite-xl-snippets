@@ -1,4 +1,4 @@
-Advanced usage doc
+Advanced usage doc, please see (the readme)[README.md#simple-usage] first
 
 
 ### Context
@@ -14,25 +14,41 @@ When a snippet is expanded, it is associated with a context (`ctx`):
 *   `selection`: the cursor's selection or `''`.
 *   `matches`: tables of the matches. See [matches](#Matches)
 *   `removed_from_matches`: the text that was removed due to matches.
-*   `indent_sz`, `indent_str`: the results of `doc:get_line_indent(l)` where `l` is
-    the line where the snippet is inserted.
+*   `indent_sz`, `indent_str`: the results of `doc:get_line_indent(l)` where `l`
+    is the line where the snippet is inserted (`ctx.line`).
 
 `at_line`, `at_col` and `line`, `col` will have different values if a partial
-or a selection is removed or if the snippet has successful matches.
+or a selection is removed or if the snippet has successful matches. Also note
+that `line` and `col` may not be the final position either.
 
 If a snippet is expanded multiple times at once (e.g multiple cursors), it is
 multiple independent snippets, each with their own context, which will be active
 together at the same time (i.e their tabstops will be synchronized).
 
+If any of the multiple snippets fails during resolution or expansion, the entire
+group of snippets will be cancelled.
+
 If this is the case, snippets are inserted in bottom-to-top order in regard to
-the doc's selections.
+the doc's selections, which is why `ctx.line` and `ctx.col` will not reflect
+the actual position of the snippet.
 
 
 ### Nodes
 
-There are two kinds of nodes: `static` and `user` nodes. Static nodes are resolved
-once, when the snippet is first expanded; user nodes are nodes which will be
-interactive, i.e tabstops.
+Internally, a snippet is represented by an array of nodes and extras, such as
+defaults, transforms, etc; i.e:
+
+```lua
+snippet = {
+    nodes    = { node_1, node_2, ... },
+    defaults = { ... },
+    ...
+}
+```
+
+There are two kinds of nodes: `static` and `user` nodes. Static nodes are
+resolved once, when the snippet is first expanded; user nodes are nodes which
+will be interactive, i.e tabstops.
 
 The resulting snippet is the concatenation of the values of all its nodes; no
 extra formatting is applied: there is no space, new line, tab, etc. inserted
@@ -102,15 +118,16 @@ A user node ('tabstop') has the following schema:
 *   `kind`: `'user'`
 *   `id`: positive integer key. Tabstops will be iterated through in ascending
     order, starting at 1. IDs do not need to be continuous; i.e `{ 2, 3, 6, 18 }`
-    will still have all 4 ids iterated through. An id of 0 means an ending position,
-    i.e where to put the cursor(s) when exiting the snippet. If a snippet does
-    not have a tabstop with an id of 0, the cursor will be put at the first
-    position after the snippet. It is however still a normal node, which means
-    it may have defaults and choices (transforms will be ignored).
+    will still have all 4 ids iterated through. They also do not need to be
+    unique: nodes with the same id will be tabbed into and out of together.
 *   `default`: (optional) a default value for this node only. see [defaults](#defaults)
 *   `transform`: (optional) a transform function for this node only. see [transforms](#transforms)
 *   `main`: (optional) specifies whether this node should be the 'main value' for this id.
 
+An id of 0 means an ending position, i.e where to put the cursor(s) when exiting
+the snippet. If a snippet does not have a tabstop with an id of 0, the cursor
+will be put at the first position after the snippet. It is however still a normal
+node, which means it may have defaults and choices (transforms will be ignored).
 
 ### Defaults
 
@@ -119,7 +136,7 @@ snippet:
 
 ```lua
 snippet = {
-    nodes = { { kind = 'user', id = 3 } },
+    nodes    = { { kind = 'user', id = 3 } },
     defaults = { [3] = 'default value' }
 }
 ```
@@ -145,8 +162,8 @@ which case only this function will be applied.
 
 ```lua
 snippets.add {
-    format = 'lsp',
-    template = '$1 -> $2',
+    format     = 'lsp',
+    template   = '$1 -> $2',
     transforms = {
         [1] = string.lower,
         [2] = function(str) return str:sub(2, -2) end
@@ -174,8 +191,8 @@ Or actual snippets (or any other autocomplete items):
 ```lua
 -- snippets.add returns the autocomplete item for the snippet
 local _, ac_item = snippets.add {
-    trigger = 'fori',
-    format = 'lsp',
+    trigger  = 'fori',
+    format   = 'lsp',
     template = [[
 for (int ${1:i} = 0; $1 < $2; ++$1) {
     $0
@@ -184,9 +201,9 @@ for (int ${1:i} = 0; $1 < $2; ++$1) {
 }
 
 snippets.add {
-    trigger = 'fun',
-    format = 'lsp',
-    choices = { [0] = { fori = ac_item } },
+    trigger  = 'fun',
+    format   = 'lsp',
+    choices  = { [0] = { fori = ac_item } },
     template = [[
 void $1($2) {
     $0
@@ -203,7 +220,9 @@ expand `fori` and automatically jump into its #1 tabstop.
 
 Matches allow fetching (and removing) text before the snippet's trigger position.
 Just like defaults, transforms and choices, matches are added with a new field
-in the snippet.
+in the snippet. However, unlike these, the field is used as an array and not
+as a 'map'; i.e any key/value pair that is not iterated by `ipairs` will be
+ignored, and the key value is not related in any way to user node ids.
 
 A match is a table with two fields:
 *   `kind`: the type of pattern.
@@ -216,10 +235,10 @@ If it is neither a table nor a string, then it defaults to the lua pattern
 the same line.
 
 There are a few important rules regarding matches resolution:
-*   matches are resolved backwards from the end of the text. This means that, for
-    any successful match, the text that the remaining matches will be tested against
-    is the text before the match. e.g, assuming match #1 is the first numeric word
-    (`'(%d+)%D*$'`) and match #2 is any word, then match #2 will be left with:
+*   matches are resolved backwards from the end of the text. This means that,
+    for any successful match, the text that the remaining matches will be tested
+    against is the text before the match. e.g, assuming match #1 is the first
+    numeric word (`'(%d+)%D*$'`), then match #2 will be left with:
     -   `'abc 123'` -> `'abc '`
     -   `'123 abc'` -> `''`
 *   an unsuccessful match does not cancel the snippet. Instead, it results in `''`
@@ -241,7 +260,7 @@ The results of matches will be in the `matches` field of the context. This allow
 snippets.add {
     trigger = 'sout',
     matches = { [1] = true },
-    nodes = {
+    nodes   = {
         'System.out.println(',
         function(ctx) return ctx.matches[1] end,
         ');\n'
@@ -276,7 +295,9 @@ snippets.add {
 ```
 
 Templates are parsed lazily (on first activation), so snippets in a certain
-format may be added before the parser itself is set.
+format may be added before the parser itself is set. Additionally, the result
+of parsing a template is cached and will be reused for future expansions, so
+it should not be modified after the parser function returns.
 
 Functions such as `snippet.add` or `snippet.execute` accept snippets consisting
 of a template and extras (defaults, transforms, etc), with said extras overriding
@@ -288,9 +309,9 @@ be converted to lowercase if modified.
 
 ```lua
 snippets.add {
-    format = 'lsp',
-    template = '${1:default} ${2/(.*)/${1:/upcase}/}',
-    defaults = { [1] = '', [2] = 'second' },
+    format     = 'lsp',
+    template   = '${1:default} ${2/(.*)/${1:/upcase}/}',
+    defaults   = { [1] = '', [2] = 'second' },
     transforms = { [2] = string.lower }
 }
 ```
@@ -319,7 +340,7 @@ any of these functions, except `B.static`, `B.user` and `ok`:
 *   `B.add(snippet, node)` -> `snippet`: adds a node to `snippet`
     -   `snippet:add(node)`
     -   `snippet:a(node)`
-*   `B.choice(snippet, id, item)` -> `snippet`: adds a choice item for `id`
+*   `B.choice(snippet, id, item)` -> `snippet`: sets choice items for `id`
     -   `snippet:choice(id, item)`
     -   `snippet:c(id, item)`
 *   `B.default(snippet, id, value)` -> `snippet`: sets the default value for `id`
@@ -336,6 +357,10 @@ any of these functions, except `B.static`, `B.user` and `ok`:
 *   `snippet:user(id, default, transform)` -> `snippet`: adds a user node to `snippet`
     -   `snippet:u(id, default, transform)`
 *   `snippet:ok()` -> `snippet`: finalizes the snippet.
+
+Please note that these buildes are mutable; use `ok()` to get an independent
+snippet. This is a first level copy, i.e values used for the nodes, defaults, etc
+are only shallow copies and will reflect changes.
 
 
 ### Controlling snippets
@@ -356,7 +381,7 @@ Cycling through tabstops wraps around as `max -> 1` for `next` and `1 -> max` fo
 `previous`; where max is the 'last' tabstop, i.e the tabstop with the highest id.
 
 Changing the tabstop will trigger transforms for the previous id; this means that
-`select_current` will _not_ do so, as the tabstop does not change. Similarly,
+`select_current` will not do so, as the tabstop does not change. Similarly,
 exiting will not trigger transforms for nodes with an id of 0.
 
 Exiting has the following behavior:
@@ -367,3 +392,6 @@ Exiting has the following behavior:
     a final tabstop.
 *   otherwise, a single cursor is placed at the end of each snippet.
 
+Internally, exiting a snippet also removes it from the active snippets and stops
+tracking its changes. This means that it is not possible to tab back into a
+nested snippet once it is exited.
