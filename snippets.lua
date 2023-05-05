@@ -70,7 +70,7 @@ local function get_raw(raw)
 		if not _s then
 			local parser = parsers[fmt]
 			if not parser then
-				core.warn('[snippets] no parser for format: %s', fmt)
+				core.error('[snippets] no parser for format: %s', fmt)
 				return
 			end
 			local _p = parser(raw.template)
@@ -83,7 +83,7 @@ local function get_raw(raw)
 			cache[fmt][raw.template] = deep_copy(_s)
 		end
 	elseif raw.nodes then
-		_s = { common.merge(raw.nodes) }
+		_s = { nodes = common.merge(raw.nodes) }
 	end
 
 	if not _s then return end
@@ -290,7 +290,7 @@ local function init(_s)
 
 	local ok, n = pcall(resolve_nodes, _s.nodes, ctx, into)
 	if not ok then
-		core.warn('[snippets] aborted expansion: %s', n)
+		core.error('[snippets] aborted expansion: %s', n)
 		return
 	end
 
@@ -663,6 +663,8 @@ function M.execute(snippet, doc, partial)
 
 	if not _s then return end
 
+	local undo_idx = doc.undo_stack.idx
+
 	-- special handling of autocomplete pt 1
 	-- suggestions are only reset after the item has been handled
 	-- i.e once this function (M.execute) returns
@@ -711,7 +713,14 @@ function M.execute(snippet, doc, partial)
 		ctx.indent_sz, ctx.indent_str = doc:get_line_indent(doc.lines[l])
 		ctx.line, ctx.col = l, c
 		_s.watch = { start_line = l, start_col = c, end_line = l, end_col = c }
-		if not init(_s) or not expand(_s) then M.exit(a) return end
+		if not init(_s) or not expand(_s) then
+			-- restores the doc to the original state, except for autocomplete
+			-- since there's no clean way to notify it to show auto suggestions
+			while doc.undo_stack.idx > undo_idx do doc:undo() end
+			M.exit(a)
+			-- if not true, autocomplete will insert full trigger
+			return true
+		end
 	end
 
 	if a.max_id > 0 then
@@ -722,7 +731,8 @@ function M.execute(snippet, doc, partial)
 
 	-- special handling of autocomplete pt 2
 	-- since suggestions are reset once this function returns,
-	-- this means that choices for the 1st tabstop will be removed
+	-- this means that choices for the 1st tabstop set in the M.next call
+	-- will be removed
 	-- so use on_close to reopen them as a workaround
 	if autocomplete and autocomplete.map_manually[AUTOCOMPLETE_KEY] then
 		autocomplete.on_close = function()
