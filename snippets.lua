@@ -717,7 +717,7 @@ function M.execute(snippet, doc, partial)
 			-- restores the doc to the original state, except for autocomplete
 			-- since there's no clean way to notify it to show auto suggestions
 			while doc.undo_stack.idx > undo_idx do doc:undo() end
-			M.exit(a)
+			active[doc] = a.parent
 			-- if not true, autocomplete will insert full trigger
 			return true
 		end
