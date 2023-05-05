@@ -505,7 +505,7 @@ local function set_tabstop(snippets, id)
 	if #new_sels > 0 then
 		doc.selections = new_sels
 		doc.last_selection = #new_sels / 4
-		if choices then
+		if choices and next(choices) then
 			autocomplete.complete(
 				{ name = AUTOCOMPLETE_KEY, items = choices },
 				autocomplete_cleanup
