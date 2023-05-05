@@ -107,32 +107,20 @@ local function get_partial(doc)
 	return partial
 end
 
-local function remove_selection(ctx, l1, c1, l2, c2)
-	ctx.selection = ctx.doc:get_text(l1, c1, l2, c2)
-	ctx.doc:remove(l1, c1, l2, c2)
-	return c1
-end
-
-local function remove_partial(ctx, partial, l1, c1, l2, c2)
+local function get_matching_partial(doc, partial, l1, c1)
 	local sz = #partial
 	if sz == 0 then return c1 end
 
 	local n = c1 - 1
-	local doc = ctx.doc
 	local line = doc.lines[l1]
 	for i = 1, sz + 1 do
 		local j = sz - i
 		local subline = line:sub(n - j, n)
 		local subpartial = partial:sub(i, -1)
 		if subpartial == subline then
-			doc:remove(l1, c1, l2, n - j)
-			ctx.partial = subpartial
-			c1 = n - j
-			break
+			return n - j
 		end
 	end
-
-	return c1
 end
 
 local function match(pattern, text)
@@ -696,10 +684,16 @@ function M.execute(snippet, doc, partial)
 			partial = '', selection = ''
 		}
 
+		local n
 		if l1 ~= l2 or c1 ~= c2 then
-			c1 = remove_selection(ctx, l1, c1, l2, c2)
+			n = 'selection'
 		elseif partial then
-			c1 = remove_partial(ctx, partial, l1, c1, l2, c2)
+			n = 'partial'
+			c1 = get_matching_partial(doc, partial, l1, c1)
+		end
+		if n then
+			ctx[n] = ctx.doc:get_text(l1, c1, l2, c2)
+			ctx.doc:remove(l1, c1, l2, c2)
 		end
 		get_matches(_s.matches, ctx, l1, c1, idx)
 
