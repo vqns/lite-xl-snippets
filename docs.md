@@ -1,4 +1,4 @@
-Advanced usage doc, please see (the readme)[README.md#simple-usage] first
+Advanced usage doc, please see [the readme](README.md#simple-usage) first
 
 
 ### Context
@@ -13,7 +13,7 @@ When a snippet is expanded, it is associated with a context (`ctx`):
 *   `partial`: the partial symbol (e.g the trigger) or `''`.
 *   `selection`: the cursor's selection or `''`.
 *   `matches`: tables of the matches. See [matches](#Matches)
-*   `removed_from_matches`: the text that was removed due to matches.
+*   `removed_from_matches`: text removed due to matches. See [matches](#Matches)
 *   `indent_sz`, `indent_str`: the results of `doc:get_line_indent(l)` where `l`
     is the line where the snippet is inserted (`ctx.line`).
 *   `extra`: an empty table which can be used to carry user defined state with
@@ -198,8 +198,7 @@ local _, ac_item = snippets.add {
     template = [[
 for (int ${1:i} = 0; $1 < $2; ++$1) {
     $0
-}
-]]
+}]]
 }
 
 snippets.add {
@@ -220,48 +219,60 @@ expand `fori` and automatically jump into its #1 tabstop.
 
 ### Matches
 
-Matches allow fetching (and removing) text before the snippet's trigger position.
-Just like defaults, transforms and choices, matches are added with a new field
-in the snippet. However, unlike these, the field is used as an array and not
-as a 'map'; i.e any key/value pair that is not iterated by `ipairs` will be
-ignored, and the key value is not related in any way to user node ids.
+Matches allow fetching (and optionally removing) text before the snippet's
+trigger position. Just like defaults, transforms and choices, matches are added
+with a new field in the snippet. However, unlike these, the field is used as an
+array and not as a 'map'; i.e any key/value pair that is not iterated by `ipairs`
+will be ignored, and the key value is not related in any way to user node ids.
 
-A match is a table with two fields:
-*   `kind`: the type of pattern.
-    *   `'lua'`: lua based pattern.
-*   `pattern`: the pattern to match the text against.
+A match is a table with the following fields:
+*   `kind`: the type of pattern, defaults to `'lua'`.
+    *   `'lua'`: [lua pattern](https://www.lua.org/manual/5.4/manual.html#6.4.1).
+*   `pattern`: the pattern to match the text against. Defaults to
+    `'([%w_]+)[^%S\n]*$'` if kind is `'lua'`.
+*   `strict`: if true and the match fails, the snippet is cancelled.
+*   `keep`: if true, the matched text is not removed from the doc.
 
-If the given match is just a string, then it is assumed to be a lua pattern.
-If it is neither a table nor a string, then it defaults to the lua pattern
-`'(%w+)[^%S\n]*$'` which is the previous word (of alphanumerics characters) on
-the same line.
+If the match is just a string, then it is assumed to be a lua pattern.
+Otherwise, if truthy, then it is the default lua pattern above.
 
-There are a few important rules regarding matches resolution:
-*   matches are resolved backwards from the end of the text. This means that,
-    for any successful match, the text that the remaining matches will be tested
-    against is the text before the match. e.g, assuming match #1 is the first
-    numeric word (`'(%d+)%D*$'`), then match #2 will be left with:
-    -   `'abc 123'` -> `'abc '`
-    -   `'123 abc'` -> `''`
-*   an unsuccessful match does not cancel the snippet. Instead, it results in `''`
-    (empty string) and then the other matches are tested and the snippet proceeds
-    as normal.
-*   matches happen after the partial / selection has been removed, but before the
-    next snippet is resolved.
-*   if a snippet with matches is expanded with multiple cursors, the text used for
-    matches starts at the position of the previous cursor + 1.
-    e.g, if `|n|` denotes cursor #n, then, in `'text |1| more text |2|'`, #2 will
-    be matched against `' more text '`.
-*   the results of the match are returned as is, i.e if a pattern has multiple
-    captures, then the result will be a table of said captures.
+Matches are resolved in the given order against the raw text of the document
+after the partial or selection has been removed; i.e whitespace is not removed
+(which is why `[^%S\n]*`).
 
-The results of matches will be in the `matches` field of the context. This allows
-'postfix' completion style:
+The used text starts at the position of the previous cursor + 1 or at the start
+of the document if the current snippet is at the first cursor and ends at the
+position of the current cursor. For example, if `|` denotes a cursor, then, in
+`text | more text |`, the used parts of the doc will be `' more text '`, then
+`'text '` (since snippets are resolved in bottom to top order).
+
+After a match is tested, the text used for the remaining matches will start at
+the same position as the original text but will end at the beginning of the
+matched text, even if `keep` checks true. Similarly, the whole match is removed
+from the doc, not just the captures. E.g if the first match is `'(%d+)%D*$'`
+(first digit word starting from the end), then the remaining text will be:
+-   `'abc 123'`: matches and captures `'123'`, leaves `'abc '`
+-   `'123 abc'`: matches `'123 abc'`, captures `'123'`, leaves `''`
+
+If a match fails and `strict` checks true, then the snippet is cancelled (as
+well as any other snippet that was activated at the same time). However, if
+`strict` checks false, then the match is set to `''` and the remaining matches
+are tested.
+
+The match results will be in the `matches` field of the context, in the same
+order as the given matches. If a match pattern has multiple captures, then the
+result will be an array of these captures.
+
+The text removed from successful matches will be in `ctx.removed_from_matches`;
+matches which failed or did not cause removed text (e.g because `keep` was true)
+will have a nil value.
+
+Tldr: matches allow 'postfix' completion style:
 
 ```lua
 snippets.add {
     trigger = 'sout',
-    matches = { [1] = true },
+    matches = { true }, -- defaults to '([%w_]+)[^%S\n]*$'
     nodes   = {
         'System.out.println(',
         function(ctx) return ctx.matches[1] end,
@@ -279,7 +290,7 @@ on the next line.
 When a snippet in template form is expanded, it is fed to the corresponding parser,
 which returns nodes that will be resolved and used to expand the snippet. Adding
 support for a template format is a matter of providing the snippets plugin a
-template -> nodes parser function:
+template -> nodes (+ extras) parser function:
 
 ```lua
 local snippets = require 'plugins.snippets'
@@ -360,7 +371,7 @@ any of these functions, except `B.static`, `B.user` and `ok`:
     -   `snippet:u(id, default, transform)`
 *   `snippet:ok()` -> `snippet`: finalizes the snippet.
 
-Please note that these buildes are mutable; use `ok()` to get an independent
+Please note that these builders are mutable; use `ok()` to get an independent
 snippet. This is a first level copy, i.e values used for the nodes, defaults, etc
 are only shallow copies and will reflect changes.
 

@@ -25,7 +25,9 @@ local parsers = { }
 
 local SNIPPET_FIELDS   = { 'transforms', 'defaults', 'matches', 'choices' }
 local DEFAULT_FORMAT   = { }
-local DEFAULT_PATTERN  = { kind = 'lua', pattern = '(%w+)[^%S\n]*$' }
+local DEFAULT_PATTERN  = '([%w_]+)[^%S\n]*$'
+local DEFAULT_MATCH    = { kind = 'lua', pattern = DEFAULT_PATTERN }
+local MATCH_TYPES      = { lua = true }
 local AUTOCOMPLETE_KEY = { }
 
 
@@ -61,6 +63,32 @@ end
 
 -- trigger
 
+local function normalize_match_patterns(patterns)
+	local ret = { normalized = true }
+	for _, p in ipairs(patterns) do
+		if type(p) == 'string' then
+			table.insert(ret, { kind = 'lua', pattern = p })
+		elseif type(p) == 'table' then
+			if p.kind ~= nil and not MATCH_TYPES[p.kind] then
+				core.error('[snippets] invalid match kind: \'%s\'', p.kind)
+				return
+			end
+			table.insert(ret, {
+				kind    = p.kind or 'lua',
+				pattern = p.pattern or DEFAULT_PATTERN,
+				keep    = p.keep,
+				strict  = p.strict
+			})
+		elseif p then
+			table.insert(ret, DEFAULT_MATCH)
+		else -- false?
+			core.error('[snippets] invalid match: \'%s\'', p)
+			return
+		end
+	end
+	return ret
+end
+
 local function get_raw(raw)
 	local _s
 
@@ -91,13 +119,22 @@ local function get_raw(raw)
 	for _, v in ipairs(SNIPPET_FIELDS) do
 		_s[v] = common.merge(_s[v], raw[v])
 	end
+	if not _s.matches.normalized then
+		_s.matches = normalize_match_patterns(_s.matches)
+		if not _s.matches then return end
+	end
 
 	return _s
 end
 
 local function get_by_id(id)
 	local raw = raws[id]
-	return raw and get_raw(raw)
+	if not raw then return end
+	local _s = get_raw(raw)
+	if _s and not raw.matches.normalized then
+		raw.matches = _s.matches
+	end
+	return _s
 end
 
 local function get_partial(doc)
@@ -123,46 +160,44 @@ local function get_matching_partial(doc, partial, l1, c1)
 	end
 end
 
-local function match(pattern, text)
-	if text == '' then return '', text end
-	if type(pattern) == 'string' then
-		pattern = { kind = 'lua', pattern = pattern }
-	elseif type(pattern) ~= 'table' then
-		pattern = DEFAULT_PATTERN
+local function get_matches(doc, patterns, l1, c1, l2, c2)
+	local matches, removed = { }, { }
+	if not l2 or not c2 then
+		l2, c2 = l1, c1
+		l1, c1 = 1, 1
 	end
 
-	local matches = ''
-	local function lua_cb(...)
-		matches = select('#', ...) > 1 and { ... } or ...
-		return ''
+	local text = doc:get_text(l1, c1, l2, c2)
+
+	for i, p in ipairs(patterns) do
+		local match = not p.strict and ''
+		local function sub_cb(...)
+			match = select('#', ...) > 1 and { ... } or ...
+			return ''
+		end
+
+		local sz = #text
+		if p.kind == 'lua' then
+			text = text:gsub(p.pattern or DEFAULT_PATTERN.pattern, sub_cb, 1)
+		end
+
+		if not match then
+			core.error('[snippets] failed strict match #%d: \'%s\'', i, p.pattern)
+			return
+		end
+
+		matches[i] = match
+
+		local offset = #text - sz
+		local _l, _c = doc:position_offset(l2, c2, offset)
+		if not p.keep and offset ~= 0 then
+			removed[i] = doc:get_text(_l, _c, l2, c2)
+			doc:remove(_l, _c, l2, c2)
+		end
+		l2, c2 = _l, _c
 	end
 
-	if pattern.kind == 'lua' then
-		text = text:gsub(pattern.pattern, lua_cb, 1)
-	end
-
-	return matches, text
-end
-
-local function get_matches(patterns, ctx, l, c, idx)
-	local doc = ctx.doc
-	local _l, _c = 1, 1
-	if idx > 1 then _l, _c = doc:get_selection_idx(idx - 1) end
-	local text = doc:get_text(_l, _c, l, c)
-
-	local m, t = { }, text
-	for id, p in ipairs(patterns) do
-		m[id], t = match(p, t)
-	end
-
-	if text ~= t then
-		-- edge case if t == '': cursors will be merged
-		local offset = #t - #text
-		_l, _c = doc:position_offset(l, c, offset)
-		doc:remove(_l, _c, l, c)
-		ctx.removed_from_matches = text:sub(1, -offset)
-	end
-	ctx.matches = m
+	return matches, removed
 end
 
 
@@ -261,10 +296,9 @@ function resolve_static(n, ctx, into)
 end
 
 function resolve_one(n, ctx, into)
-	if n == nil then return end
 	if type(n) == 'table' and n.kind == 'user' then
 		resolve_user(n, ctx, into)
-	else
+	elseif n ~= nil then
 		resolve_static(n, ctx, into)
 	end
 end
@@ -290,7 +324,7 @@ local function init(_s)
 
 	local ok, n = pcall(resolve_nodes, _s.nodes, ctx, into)
 	if not ok then
-		core.error('[snippets] aborted expansion: %s', n)
+		core.error('[snippets] %s', n)
 		return
 	end
 
@@ -618,7 +652,7 @@ function M.add(snippet)
 	end
 
 	for _, v in ipairs(SNIPPET_FIELDS) do
-		_s[v] = snippet[v]
+		_s[v] = snippet[v] or { }
 	end
 
 	local id = os.time() + math.random()
@@ -698,13 +732,28 @@ function M.execute(snippet, doc, partial)
 			ctx[n] = ctx.doc:get_text(l1, c1, l2, c2)
 			ctx.doc:remove(l1, c1, l2, c2)
 		end
-		get_matches(_s.matches, ctx, l1, c1, idx)
+
+		local matches, removed
+		if idx == 1 then
+			l2, c2 = 1, 1
+		else
+			local _; _, _, l2, c2 = doc:get_selection_idx(idx - 1, true)
+		end
+		ctx.matches, ctx.removed_from_matches = get_matches(doc, _s.matches, l2, c2, l1, c1)
+
+		if not ctx.matches then
+			while doc.undo_stack.idx > undo_idx do doc:undo() end
+			return
+		end
 
 		snippet.ctx = ctx
 		snippets[idx] = snippet
 	end
 
-	local a = { doc = doc, parent = active[doc], tabstops = { }, last_id = 0, max_id = 0 }
+	local a = {
+		doc = doc, parent = active[doc],
+		tabstops = { }, last_id = 0, max_id = 0
+	}
 	active[doc] = a
 
 	for idx, l, c in doc:get_selections(true, true) do
@@ -718,8 +767,7 @@ function M.execute(snippet, doc, partial)
 			-- since there's no clean way to notify it to show auto suggestions
 			while doc.undo_stack.idx > undo_idx do doc:undo() end
 			active[doc] = a.parent
-			-- if not true, autocomplete will insert full trigger
-			return true
+			return
 		end
 	end
 
