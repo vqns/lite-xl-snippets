@@ -16,6 +16,8 @@ When a snippet is expanded, it is associated with a context (`ctx`):
 *   `removed_from_matches`: the text that was removed due to matches.
 *   `indent_sz`, `indent_str`: the results of `doc:get_line_indent(l)` where `l`
     is the line where the snippet is inserted (`ctx.line`).
+*   `extra`: an empty table which can be used to carry user defined state with
+    the context.
 
 `at_line`, `at_col` and `line`, `col` will have different values if a partial
 or a selection is removed or if the snippet has successful matches. Also note

@@ -681,7 +681,8 @@ function M.execute(snippet, doc, partial)
 			doc = doc,
 			cursor_idx = idx,
 			at_line = l1, at_col = c1,
-			partial = '', selection = ''
+			partial = '', selection = '',
+			extra = { }
 		}
 
 		local n
