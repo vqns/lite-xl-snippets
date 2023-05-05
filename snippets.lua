@@ -202,8 +202,8 @@ end
 
 function resolve_user(n, ctx, into)
 	local id = n.id
-	if type(id) ~= 'number' then
-		error(string.format('Snippet node id must be a number: %s', id), 0)
+	if type(id) ~= 'number' or id < 0 then
+		error(string.format('node id must be a positive number: %s', id), 0)
 	end
 
 	n = common.merge(n)
