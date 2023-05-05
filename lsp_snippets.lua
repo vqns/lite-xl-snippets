@@ -15,9 +15,8 @@ local json do
 	local ok, j 
 	for _, p in ipairs { 'plugins.json', 'plugins.lsp.json', 'plugins.lintplus.json' } do
 		ok, j = pcall(require, p)
-		if ok then break end
+		if ok then json = j; break end
 	end
-	json = ok and j
 end
 
 
@@ -573,6 +572,7 @@ local function add_file(filename, exts)
 
 	if filename:match('%.code%-snippets$') then
 		enqueue(filename)
+		return
 	end
 
 	if not filename:match('%.json$') then return end

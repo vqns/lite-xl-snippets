@@ -70,7 +70,7 @@ local function get_raw(raw)
 		if not _s then
 			local parser = parsers[fmt]
 			if not parser then
-				core.warn('No parser for format: %s', raw.format)
+				core.warn('[snippets] no parser for format: %s', fmt)
 				return
 			end
 			local _p = parser(raw.template)
@@ -302,7 +302,7 @@ local function init(_s)
 
 	local ok, n = pcall(resolve_nodes, _s.nodes, ctx, into)
 	if not ok then
-		core.warn('Aborted snippet: %s', n)
+		core.warn('[snippets] aborted expansion: %s', n)
 		return
 	end
 
@@ -629,9 +629,9 @@ function M.add(snippet)
 		return
 	end
 
-    for _, v in ipairs(SNIPPET_FIELDS) do
-        _s[v] = snippet[v]
-    end
+	for _, v in ipairs(SNIPPET_FIELDS) do
+		_s[v] = snippet[v]
+	end
 
 	local id = os.time() + math.random()
 
