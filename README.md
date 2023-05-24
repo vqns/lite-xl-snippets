@@ -1,24 +1,25 @@
-snippets plugin for [lite-xl](https://github.com/lite-xl)
+snippets plugin for [lite-xl]
 
 
 ### Installation
 
-Copy the files into the editor's `plugins` directory.
+Place the following files in the editor's `plugins` directory (e.g
+`~/.config/lite-xl/plugins`, not `~/.config/lite-xl/plugins/lite-xl-snippets`):
 
 *  `snippets.lua`: the base plugin which includes features such as snippet
     expansion, tabbing through tabstops, etc.
-*  `lsp_snippets.lua`: requires the base plugin; adds support for
-    [lsp](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#snippet_syntax)
-    / [vscode](https://code.visualstudio.com/docs/editor/userdefinedsnippets) style snippets.
-*   `json.lua`: [rxi's json library](https://github.com/rxi/json.lua), required to
-    load LSP snippets from json files. `lsp_snippets` will attempt to load it from
-    lint+ or the lsp plugin if they're in the plugin path, so it is only needed
-    if neither can be found. See the [notes](#Notes) for details.
+*  `lsp_snippets.lua`: requires the base plugin; adds support for [lsp] / [vscode]
+   style snippets.
+*   `json.lua`: rxi's [json] library, required to load LSP snippets from json
+    files. `lsp_snippets` will attempt to load it from [lint+] or the [lsp plugin]
+    if they're in the plugin path, so it is only needed if neither can be found.
 
 
-### Examples
+### Usage
 
-Adding an LSP style snippet with a `fori` trigger for lua files:
+#### Adding snippets
+
+Snippets may be added through lua configuration:
 
 ```lua
 local snippets = require 'plugins.snippets'
@@ -26,7 +27,7 @@ snippets.add {
     trigger  = 'fori',
     files    = '%.lua$',
     info     = 'ipairs',             -- optional, used by the autocomplete menu
-    desc     = 'numerical for loop', -- optional, used by the autocomplete menu
+    desc     = 'array iterator',     -- optional, used by the autocomplete menu
     format   = 'lsp',                -- 'lsp' must be lowercase
     template = [[
 for ${1:i}, ${2:v} in ipairs($3) do
@@ -36,7 +37,43 @@ end
 }
 ```
 
-Adding LSP snippets from json files:
+-  `trigger`: if present, adds the snippet to autocompletion suggestions.
+-  `files`: optional filter used by the autocomplete plugin, in the form of a
+   [lua pattern] to be checked against filenames. 
+-  `info`: the name on the right of the trigger in the autocompletion menu.
+-  `desc`: the description popup next to the autocompletion menu. Defaults to
+   the template.
+-  `format`: the format of the template. If none, the template is inserted as
+   plain text.
+-  `template`: the body of the snippet. The format supported by the `lsp_snippets`
+   plugin is the [lsp] / [vscode] subset of [textmate] snippets.
+
+Other possible and optional fields: `nodes`, `defaults`, `transforms`, `choices`,
+`matches`. See [docs.md](docs.md) for details.
+
+For snippets to be automatically loaded on startup, they should be placed
+somewhere the editor will load them by itself. The easiest way to do that is
+the user module (`init.lua`); another is to create a new plugin which contains
+the snippets, which has the advantage of not cluttering the config file. E.g,
+in `plugins/my_snippets.lua` or `plugins/my_snippets/init.lua`:
+
+```lua
+-- modversion:3
+local snippets = require 'plugins.snippets'
+
+snippets.add { ... }
+snippets.add { ... }
+```
+
+A last option, if the snippets are placed at a location that the editor does not
+automatically load, is to load them manually using `dofile`. E.g in `init.lua`:
+
+```lua
+dofile '/path/to/my_snippets.lua'
+```
+
+An alternative to lua configuration is to use json files, which is done by
+adding paths to the `lsp_snippets` plugin:
 
 ```lua
 local lsp_snippets = require 'plugins.lsp_snippets'
@@ -47,7 +84,29 @@ lsp_snippets.add_paths {
 }
 ```
 
-Executing a snippet in the current doc at each cursor:
+The `add_paths` function takes as argument either a single path or an array of
+paths and loads them according to the following rules:
+
+*  files with a name of the form `langname.json` (see [notes](#Notes)).
+*  files with the `.code-snippets` extension.
+*  folders:
+   -  subfiles with a valid name;
+   -  subfolders with a language name: every subfile with the `.json` extension
+      is added.
+
+For details on these json files, refer to the [vscode spec] (project scope is not
+supported). Existing snippets may be found at [rafamadriz/friendly-snippets] or
+in [vscode extensions] (e.g most extensions which add support for a given language
+will contain snippets).
+
+For example, adding [rafamadriz/friendly-snippets]:
+
+1. `git clone https://github.com/rafamadriz/friendly-snippets.git` in the userdir
+2. add `lsp_snippets.add_paths 'friendly-snippets/snippets'` to `init.lua`
+
+#### Using snippets
+
+A snippet may be expanded either with the autocomplete suggestions or manually:
 
 ```lua
 local snippets = require 'plugins.snippets'
@@ -61,12 +120,11 @@ end
 }
 ```
 
+This will expand the given snippet at each cursor in the current document.
 
-### Simple usage
+Once expanded, a snippet may be navigated through using these commands:
 
-#### Commands
-
-`snippets:next` (`tab`):
+`snippets:next`:
     sets selections for the next tabstop. (wraps around to 1)
 
 `snippets:previous` (`shift+tab`):
@@ -78,83 +136,41 @@ end
 `snippets:exit` (`escape`):
     sets selections for either the end tabstop (e.g `$0`) or after the snippet.
 
-`snippets:next-or-exit`:
+`snippets:next-or-exit` (`tab`):
     if the current tabstop is the last one, exits; otherwise, next.
-
-
-#### API
-
-`snippets.add(snippet)` -> `(id, ac | nil) | nil`
-*   `snippet`: the snippet to add. Schema:
-    -   `template`: the snippet template (e.g `'$1 some text ${2:and more text}'`)
-    -   `format`: the format of the template (e.g `lsp`).
-        If unspecified, the template is directly inserted as plain text.
-    -   `trigger`: if the autocomplete plugin is enabled, the given snippet will
-        be added as a completion item with this trigger.
-    -   `files`: Pattern to be matched against a filename to determine whether the
-        autocompletion should be enabled, e.g `'%.lua$'` for lua files.
-    -   `info`: (optional) the name on the right of the trigger in the autocompletion menu.
-    -   `desc`: (optional) the description that shows up in the autocompletion menu;
-        defaults to the template, if any.
-    -   `nodes`, `defaults`, `transforms`, `choices`, `matches`: (optional)
-        it is also possible to directly use nodes, which are the internal
-        representation of a snippet. If the given snippet contains neither a template
-        nor nodes, this function is a no op and returns `nil`. See [docs.md](docs.md)
-        for details.
-
-*   `id`: this function returns an id which can be reused to execute this exact
-    snippet. If the snippet is parsed from a template, it will be parsed only
-    once if executed with this id.
-*   `ac`: if the snippet was added as an autocompletion item, this function also
-    returns said item.
-
-`snippets.execute(snippet, doc, partial)` -> `true | nil`
-*   `snippet`: the snippet to expand; it will be inserted at each cursor in `doc`.
-    This is either an id returned from `snippets.add` or a snippet as would be
-    given to `snippets.add`.
-*   `doc`: the doc in which to expand the snippet; if nil, the current doc is used.
-*   `partial`: if truthy, remove the 'partial symbol', e.g the current selection or
-    the trigger if expanded from an autocompletion.
-
-*   this function returns `true` if it successfully completed; `nil` otherwise.
-
-`lsp_snippets.add_paths(paths)`
-*   `paths`: a single path or an array of paths.
-    -   if a path is a relative path, then it is prefixed with the userdir, e.g
-        `snippets` -> `~/.config/lite-xl/snippets` if the userdir is `~/.config`.
-    -   if it is a file, then it is added only if it has a valid file name in the
-        form of `languagename.json` (case is ignored) or ends with `.code-snippets`.
-    -   if it is a folder, then:
-        *   all files with a valid name are added;
-        *   subfolders with a language name have all their json files added,
-            regardless of their name (e.g `python/main.json`). This is not recursive,
-            e.g `python/python/main.json` will not work.
 
 
 ### Advanced
 
-See [docs.md](docs.md)
+See [docs.md](docs.md).
 
 
 ### Notes
 
-*   Adding snippets from json files requires the files to have a name that is a
-    'valid' language name or to have the `.code-snippets` extension. See the
-    [vscode spec](https://code.visualstudio.com/docs/editor/userdefinedsnippets#_snippet-scope)
-    (project scope is not supported). These language names are defined in the
-    `extensions` table in `lsp_snippets.lua`. Snippets added through these names
-    will be active for the list of extensions they're mapped to. Adding a new
-    language or editing the extensions for a certain language can be done simply
-    by requiring `lsp_snippets` and modifying its `extensions` field:
+*  Valid language names for json files are defined in the `extensions` table in
+   `lsp_snippets.lua`. Snippets added through these names will be active for the
+   list of extensions they're mapped to. Adding a new language or editing the
+   extensions for a certain language can be done simply by requiring `lsp_snippets`
+   and modifying its `extensions` field:
 
-    ```lua
-    local lsp_snippets = require 'plugins.lsp_snippets'
+   ```lua
+   local lsp_snippets = require 'plugins.lsp_snippets'
 
-    -- no dot for the extensions, e.g `lua`, not `.lua`
-    -- both the name and the extensions must be lowercase
-    lsp_snippets.extensions['lang'] = { 'ext1', 'ext2' }
-    ```
+   -- no dot for the extensions, e.g `lua`, not `.lua`
+   -- both the name and the extensions must be lowercase
+   lsp_snippets.extensions['lang'] = { 'ext1', 'ext2' }
+   ```
 
-    Snippet files may be found at
-    [rafamadriz/friendly-snippets](https://github.com/rafamadriz/friendly-snippets)
-    or in [vscode extensions](https://marketplace.visualstudio.com/VSCode).
+
+
+[lite-xl]:     https://github.com/lite-xl
+[json]:        https://github.com/rxi/json.lua
+[lsp]:         https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#snippet_syntax
+[vscode]:      https://code.visualstudio.com/docs/editor/userdefinedsnippets
+[textmate]:    https://macromates.com/textmate/manual/snippets
+[vscode spec]: https://code.visualstudio.com/docs/editor/userdefinedsnippets#_create-your-own-snippets
+[rafamadriz/friendly-snippets]: https://github.com/rafamadriz/friendly-snippets
+[vscode extensions]: https://marketplace.visualstudio.com/VSCode
+[lint+]:       https://github.com/liquidev/lintplus
+[lsp plugin]:  https://github.com/lite-xl/lite-xl-lsp
+[lua pattern]: https://www.lua.org/manual/5.4/manual.html#6.4.1

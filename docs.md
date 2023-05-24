@@ -1,23 +1,25 @@
-Advanced usage doc, please see [the readme](README.md#simple-usage) first
+Advanced usage doc, please see the readme first
 
+
+## Snippet creation
 
 ### Context
 
 When a snippet is expanded, it is associated with a context (`ctx`):
-*   `doc`: the doc in which it was expanded.
-*   `cursor_idx`: the index of the cursor.
-*   `at_line`: line index of the cursor when `snippets.execute` was called.
-*   `at_col`: col index of the cursor when `snippets.execute` was called.
-*   `line`: line index of where the snippet is inserted.
-*   `col`: col index of where the snippet is inserted.
-*   `partial`: the partial symbol (e.g the trigger) or `''`.
-*   `selection`: the cursor's selection or `''`.
-*   `matches`: tables of the matches. See [matches](#Matches)
-*   `removed_from_matches`: text removed due to matches. See [matches](#Matches)
-*   `indent_sz`, `indent_str`: the results of `doc:get_line_indent(l)` where `l`
-    is the line where the snippet is inserted (`ctx.line`).
-*   `extra`: an empty table which can be used to carry user defined state with
-    the context.
+*  `doc`: the doc in which it was expanded.
+*  `cursor_idx`: the index of the cursor.
+*  `at_line`: line index of the cursor when `snippets.execute` was called.
+*  `at_col`: col index of the cursor when `snippets.execute` was called.
+*  `line`: line index of where the snippet is inserted.
+*  `col`: col index of where the snippet is inserted.
+*  `partial`: the partial symbol (e.g the trigger) or `''`.
+*  `selection`: the cursor's selection or `''`.
+*  `matches`: tables of the matches. See [matches](#Matches)
+*  `removed_from_matches`: text removed due to matches. See [matches](#Matches)
+*  `indent_sz`, `indent_str`: the results of `doc:get_line_indent(l)` where `l`
+   is the line where the snippet is inserted (`ctx.line`).
+*  `extra`: an empty table which can be used to carry user defined state with
+   the context.
 
 `at_line`, `at_col` and `line`, `col` will have different values if a partial
 or a selection is removed or if the snippet has successful matches. Also note
@@ -57,7 +59,6 @@ extra formatting is applied: there is no space, new line, tab, etc. inserted
 between nodes, with the exception that each line is indented at the same level
 as the line where the snippet was expanded (`ctx.indent_str`).
 
-
 #### Static nodes
 
 A static node is a table with the following schema:
@@ -70,11 +71,11 @@ A static node is a table with the following schema:
 ```
 
 where `value` may be:
-*   `nil`: the node is discarded;
-*   a table, which is interpreted as an array of nodes and inserted in the snippet;
-*   a function, which is called with the above context and whose result is resolved
-    according to these rules;
-*   anything else: `tostring()`.
+*  `nil`: the node is discarded;
+*  a table, which is interpreted as an array of nodes and inserted in the snippet;
+*  a function, which is called with the above context and whose result is resolved
+   according to these rules;
+*  anything else: `tostring()`.
 
 The table wrapper is optional, and the value may be directly inserted into the
 snippet's nodes.
@@ -117,14 +118,14 @@ snippet is undefined.
 #### User nodes
 
 A user node ('tabstop') has the following schema:
-*   `kind`: `'user'`
-*   `id`: positive integer key. Tabstops will be iterated through in ascending
-    order, starting at 1. IDs do not need to be continuous; i.e `{ 2, 3, 6, 18 }`
-    will still have all 4 ids iterated through. They also do not need to be
-    unique: nodes with the same id will be tabbed into and out of together.
-*   `default`: (optional) a default value for this node only. see [defaults](#defaults)
-*   `transform`: (optional) a transform function for this node only. see [transforms](#transforms)
-*   `main`: (optional) specifies whether this node should be the 'main value' for this id.
+*  `kind`: `'user'`
+*  `id`: positive integer key. Tabstops will be iterated through in ascending
+   order, starting at 1. IDs do not need to be continuous; i.e `{ 2, 3, 6, 18 }`
+   will still have all 4 ids iterated through. They also do not need to be
+   unique: nodes with the same id will be tabbed into and out of together.
+*  `default`: (optional) a default value for this node only. see [defaults](#defaults)
+*  `transform`: (optional) a transform function for this node only. see [transforms](#transforms)
+*  `main`: (optional) specifies whether this node should be the 'main value' for this id.
 
 An id of 0 means an ending position, i.e where to put the cursor(s) when exiting
 the snippet. If a snippet does not have a tabstop with an id of 0, the cursor
@@ -226,15 +227,15 @@ array and not as a 'map'; i.e any key/value pair that is not iterated by `ipairs
 will be ignored, and the key value is not related in any way to user node ids.
 
 A match is a table with the following fields:
-*   `kind`: the type of pattern, defaults to `'lua'`.
-    *   `'lua'`: [lua pattern](https://www.lua.org/manual/5.4/manual.html#6.4.1).
-*   `pattern`: the pattern to match the text against. Defaults to
-    `'([%w_]+)[^%S\n]*$'` if kind is `'lua'`.
-*   `strict`: if true and the match fails, the snippet is cancelled.
-*   `keep`: if true, the matched text is not removed from the doc.
+*  `kind`: the type of pattern, defaults to `'lua'`.
+   -  `'lua'`: [lua pattern](https://www.lua.org/manual/5.4/manual.html#6.4.1).
+*  `pattern`: the pattern to match the text against. Defaults to
+   `'([%w_]+)[^%S\n]*$'` if kind is `'lua'`.
+*  `strict`: if true and the match fails, the snippet is cancelled.
+*  `keep`: if true, the matched text is not removed from the doc.
 
 If the match is just a string, then it is assumed to be a lua pattern.
-Otherwise, if truthy, then it is the default lua pattern above.
+Otherwise, if truthy, then it is the above default lua pattern.
 
 Matches are resolved in the given order against the raw text of the document
 after the partial or selection has been removed; i.e whitespace is not removed
@@ -251,8 +252,8 @@ the same position as the original text but will end at the beginning of the
 matched text, even if `keep` checks true. Similarly, the whole match is removed
 from the doc, not just the captures. E.g if the first match is `'(%d+)%D*$'`
 (first digit word starting from the end), then the remaining text will be:
--   `'abc 123'`: matches and captures `'123'`, leaves `'abc '`
--   `'123 abc'`: matches `'123 abc'`, captures `'123'`, leaves `''`
+*  `'abc 123'`: matches and captures `'123'`, leaves `'abc '`
+*  `'123 abc'`: matches `'123 abc'`, captures `'123'`, leaves `''`
 
 If a match fails and `strict` checks true, then the snippet is cancelled (as
 well as any other snippet that was activated at the same time). However, if
@@ -290,7 +291,7 @@ on the next line.
 When a snippet in template form is expanded, it is fed to the corresponding parser,
 which returns nodes that will be resolved and used to expand the snippet. Adding
 support for a template format is a matter of providing the snippets plugin a
-template -> nodes (+ extras) parser function:
+template -> snippet parser function:
 
 ```lua
 local snippets = require 'plugins.snippets'
@@ -330,6 +331,63 @@ snippets.add {
 ```
 
 
+## API
+
+### Base
+
+*  `snippets.add(snippet)` -> `(id, ac | nil) | nil`: adds the given snippet.
+   Valid fields for `snippet`: `trigger`, `files`, `info`, `desc`, `format`,
+   `template`, `nodes`, `defaults`, `transforms`, `choices`, `matches`.
+   Requires at least `template` or `nodes` to be valid (i.e not `nil`).
+   If `snippet` is valid, an `id` is returned, which can then be passed to
+   `snippets.execute` or `snippets.remove`. If `trigger` is not `nil` and the
+   autocomplete plugin is enabled, then this also returns an autocompletion
+   item (`ac`).
+*  `snippets.execute(snippet, doc, partial)` -> `true | nil`: executes the given
+   snippet. Returns `true` in case of success, `nil` otherwise.
+   -  `snippet` may be either an id returned from `snippets.add` or a snippet
+      as would be given to `snippets.add`.
+   -  `doc`: the doc in which to expands. Defaults to the current doc.
+   -  `partial`: whether to remove the 'partial' symbol under the caret.
+*  `snippets.remove(id)`: removes the snippet with the given id.
+*  `snippets.parsers`: table which contains the template parsers. See 
+   [templates](#Templates).
+
+
+### Control
+
+The function `snippets.in_snippet(doc)` returns a table which contains the active
+snippets in the current doc or the given one. If there is no current doc or it
+does not have active snippets, this returns `nil`. This table must not be modified;
+it can however be used to call the following functions:
+    
+*  `snippets.select_current(snippets)`: selects the values of the current tabstop
+*  `snippets.next(snippets)`: sets selections for the next tabstop
+*  `snippets.previous(snippets)`: sets selections for the previous tabstop
+*  `snippets.exit(snippets)`: exits the snippets
+*  `snippets.next_or_exit(snippets)`: if on the last tabstop, exits; otherwise,
+    sets the next tabstop
+
+Cycling through tabstops wraps around as `max -> 1` for `next` and `1 -> max` for
+`previous`; where max is the 'last' tabstop, i.e the tabstop with the highest id.
+
+Changing the tabstop will trigger transforms for the previous id; this means that
+`select_current` will not do so, as the tabstop does not change. Similarly,
+exiting will not trigger transforms for nodes with an id of 0.
+
+Exiting has the following behavior:
+*  if the snippets were nested, then selections are set as if calling `next_or_exit`
+   with the parent snippets.
+*  else, if at least one snippet has a tastop with an id of 0, then selections
+   are set only for nodes with an id of 0. I.e no cursor for snippets without
+   a final tabstop.
+*  otherwise, a single cursor is placed at the end of each snippet.
+
+Internally, exiting a snippet also removes it from the active snippets and stops
+tracking its changes. This means that it is not possible to tab back into a
+nested snippet once it is exited.
+
+
 ### Builder
 
 For convenience, a builder api is included in `snippets.lua`:
@@ -347,64 +405,39 @@ This adds a snippet equivalent to the LSP template `'local $1 = $2\n'`.
 API, where `B` is `snippets.builder` and `snippet` is a snippet as returned from
 any of these functions, except `B.static`, `B.user` and `ok`:
 
-*   `B.new()` -> `snippet`: returns a new empty snippet
-*   `B.static(value)` -> `node`: returns a static node
-*   `B.user(id, default, transform)` -> `node`: returns a user node
-*   `B.add(snippet, node)` -> `snippet`: adds a node to `snippet`
-    -   `snippet:add(node)`
-    -   `snippet:a(node)`
-*   `B.choice(snippet, id, item)` -> `snippet`: sets choice items for `id`
-    -   `snippet:choice(id, item)`
-    -   `snippet:c(id, item)`
-*   `B.default(snippet, id, value)` -> `snippet`: sets the default value for `id`
-    -   `snippet:default(id, value)`
-    -   `snippet:d(id, value)`
-*   `B.match(m)` -> `snippet`: adds a match to `snippet`
-    -   `snippet:match(m)`
-    -   `snippet:m(m)`
-*   `B.transform(snippet, id, fn)` -> `snippet`: sets the transform for `id`
-    -   `snippet:transform(id, fn)`
-    -   `snippet:t(id, fn)`
-*   `snippet:static(value)` -> `snippet`: adds a static node to `snippet`
-    -   `snippet:s(value)`
-*   `snippet:user(id, default, transform)` -> `snippet`: adds a user node to `snippet`
-    -   `snippet:u(id, default, transform)`
-*   `snippet:ok()` -> `snippet`: finalizes the snippet.
+*  `B.new()` -> `snippet`: returns a new empty snippet
+*  `B.static(value)` -> `node`: returns a static node
+*  `B.user(id, default, transform)` -> `node`: returns a user node
+*  `B.add(snippet, node)` -> `snippet`: adds a node to `snippet`
+   -  `snippet:add(node)`
+   -  `snippet:a(node)`
+*  `B.choice(snippet, id, item)` -> `snippet`: sets choice items for `id`
+   -  `snippet:choice(id, item)`
+   -  `snippet:c(id, item)`
+*  `B.default(snippet, id, value)` -> `snippet`: sets the default value for `id`
+   -  `snippet:default(id, value)`
+   -  `snippet:d(id, value)`
+*  `B.match(m)` -> `snippet`: adds a match to `snippet`
+   -  `snippet:match(m)`
+   -  `snippet:m(m)`
+*  `B.transform(snippet, id, fn)` -> `snippet`: sets the transform for `id`
+   -  `snippet:transform(id, fn)`
+   -  `snippet:t(id, fn)`
+*  `snippet:static(value)` -> `snippet`: adds a static node to `snippet`
+   -  `snippet:s(value)`
+*  `snippet:user(id, default, transform)` -> `snippet`: adds a user node to `snippet`
+   -  `snippet:u(id, default, transform)`
+*  `snippet:ok()` -> `snippet`: finalizes the snippet.
 
 Please note that these builders are mutable; use `ok()` to get an independent
 snippet. This is a first level copy, i.e values used for the nodes, defaults, etc
 are only shallow copies and will reflect changes.
 
 
-### Controlling snippets
+### `lsp_snippets`
 
-The function `snippets.in_snippet(doc)` returns a table which contains the active
-snippets in the current doc or the given one. If there is no current doc or it
-does not have active snippets, this returns `nil`. This table must not be modified;
-it can however be used to call the following functions:
-    
-*   `snippets.select_current(snippets)`: selects the values of the current tabstop
-*   `snippets.next(snippets)`: sets selections for the next tabstop
-*   `snippets.previous(snippets)`: sets selections for the previous tabstop
-*   `snippets.exit(snippets)`: exits the snippets
-*   `snippets.next_or_exit(snippets)`: if on the last tabstop, exits; otherwise,
-    sets the next tabstop
-
-Cycling through tabstops wraps around as `max -> 1` for `next` and `1 -> max` for
-`previous`; where max is the 'last' tabstop, i.e the tabstop with the highest id.
-
-Changing the tabstop will trigger transforms for the previous id; this means that
-`select_current` will not do so, as the tabstop does not change. Similarly,
-exiting will not trigger transforms for nodes with an id of 0.
-
-Exiting has the following behavior:
-*   if the snippets were nested, then selections are set as if calling `next_or_exit`
-    with the parent snippets.
-*   else, if at least one snippet has a tastop with an id of 0, then selections
-    are set only for nodes with an id of 0. I.e no cursor for snippets without
-    a final tabstop.
-*   otherwise, a single cursor is placed at the end of each snippet.
-
-Internally, exiting a snippet also removes it from the active snippets and stops
-tracking its changes. This means that it is not possible to tab back into a
-nested snippet once it is exited.
+*  `lsp_snippets.parse(template)` -> `snippet`: parses the given template and
+   return a snippet which can be passed to `snippets.add` or `snippet.execute`.
+*  `lsp_snippets.add_paths(paths)`: loads snippets from json files.
+*  `lsp_snippets.extensions`: table of language names to language extensions,
+   used for the json files.
