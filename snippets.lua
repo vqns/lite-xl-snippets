@@ -628,15 +628,14 @@ end
 
 
 -- API
--- every function that takes 'snippets' assume that all given snippets are in the same doc
--- and the table has the same schema as return from in_snippet
 
 local M = { parsers = parsers }
 
 M.parsers[DEFAULT_FORMAT] = function(s) return { kind = 'static', value = s } end
 
 local function ac_callback(_, item)
-	return M.execute(item.data, nil, true)
+	M.execute(item.data, nil, true)
+	return true
 end
 
 function M.add(snippet)
@@ -689,24 +688,13 @@ function M.execute(snippet, doc, partial)
 	if not doc then return end
 
 	local _t, _s = type(snippet)
-	if _t == 'number' then
-        _s = get_by_id(snippet)
-	elseif _t == 'table' then
-		_s = get_raw(snippet)
-	end
-
+	_s = _t == 'number' and get_by_id(snippet) or _t == 'table' and get_raw(snippet)
 	if not _s then return end
 
 	local undo_idx = doc.undo_stack.idx
 
-	-- special handling of autocomplete pt 1
-	-- suggestions are only reset after the item has been handled
-	-- i.e once this function (M.execute) returns
-	-- so at this point here, it still has old suggestions,
-	-- including manually added snippet choices
-	if partial and autocomplete then
-		autocomplete.close()
-	end
+	-- autocomplete hasn't been cleared yet
+	if partial and autocomplete then autocomplete.close() end
 
 	partial = partial and get_partial(doc)
 	local snippets = { }
@@ -733,7 +721,6 @@ function M.execute(snippet, doc, partial)
 			ctx.doc:remove(l1, c1, l2, c2)
 		end
 
-		local matches, removed
 		if idx == 1 then
 			l2, c2 = 1, 1
 		else
@@ -763,25 +750,15 @@ function M.execute(snippet, doc, partial)
 		ctx.line, ctx.col = l, c
 		_s.watch = { start_line = l, start_col = c, end_line = l, end_col = c }
 		if not init(_s) or not expand(_s) then
-			-- restores the doc to the original state, except for autocomplete
-			-- since there's no clean way to notify it to show auto suggestions
 			while doc.undo_stack.idx > undo_idx do doc:undo() end
 			active[doc] = a.parent
 			return
 		end
 	end
 
-	if a.max_id > 0 then
-		M.next(a)
-	else
-		M.exit(a)
-	end
+	if a.max_id > 0 then M.next(a) else M.exit(a) end
 
-	-- special handling of autocomplete pt 2
-	-- since suggestions are reset once this function returns,
-	-- this means that choices for the 1st tabstop set in the M.next call
-	-- will be removed
-	-- so use on_close to reopen them as a workaround
+	-- autocomplete is cleared when this function (M.exit) returns
 	if autocomplete and autocomplete.map_manually[AUTOCOMPLETE_KEY] then
 		autocomplete.on_close = function()
 			autocomplete.open(autocomplete_cleanup)

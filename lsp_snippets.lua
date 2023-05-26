@@ -779,10 +779,10 @@ extensions = {
 	['visual basic'] = { 'vb', 'bas', 'cls', 'frm', 'frx', 'vba', 'vbhtml', 'vbs', },
 }
 
-extensions.cpp = extensions['c++']
+extensions.cpp    = extensions['c++']
 extensions.csharp = extensions['c#']
-extensions.latex = extensions.tex
-extensions.objc = extensions['objective-c']
+extensions.latex  = extensions.tex
+extensions.objc   = extensions['objective-c']
 
 M.extensions = extensions
 
