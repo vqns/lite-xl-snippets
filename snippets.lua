@@ -850,7 +850,7 @@ command.add(M.in_snippet, {
 keymap.add {
 	['tab']       = 'snippets:next-or-exit',
 	['shift+tab'] = 'snippets:previous',
-	['escape']    = 'snippets.exit'
+	['escape']    = 'snippets:exit'
 }
 
 do -- 'next' is added to keymap after 'complete' so it overrides autocomplete
