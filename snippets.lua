@@ -397,40 +397,55 @@ local function pop(_s)
 	table.remove(a, idx)
 end
 
-local function insert_nodes(nodes, doc, l, c, watches, indent)
+local function insert_nodes(nodes, doc, p, l, c, d, watches, indent)
 	local _l, _c
 	for _, n in ipairs(nodes) do
 		local w
 		if n.kind == 'user' then
-			w = { l, c }
+			w = { l, c, depth = d, active = false, parent = p }
 			n.watch = w
 			table.insert(watches, w)
 		else
 			n.value = n.value:gsub('\n', indent)
 		end
 		if type(n.value) == 'table' then
-			_l, _c = insert_nodes(n.value.nodes, doc, l, c, watches, indent)
+			w.children = { }
+			_l, _c, d = insert_nodes(
+				n.value.nodes, doc, w, l, c, d + 1, watches, indent
+			)
 		else
 			doc:insert(l, c, n.value)
 			_l, _c = doc:position_offset(l, c, #n.value)
 		end
 		l, c = _l, _c
 		if w then
+			table.insert(p.children, w)
 			w[3], w[4] = l, c
 		end
 	end
-	return l, c
+	return l, c, d
 end
 
-local function expand(_s)
-	_s.watches = { _s.watch }
+local function expand(_s, depth)
 	local ctx = _s.ctx
 	local l, c = ctx.line, ctx.col
+	_s.watch = {
+		l, c, l, c, depth = depth,
+		active = true, snippet = true,
+		children = { }
+	}
+	_s.watches = { }
 
-	local _l, _c = insert_nodes(_s.nodes, ctx.doc, l, c, _s.watches, '\n' .. ctx.indent_str)
+	local _l, _c = insert_nodes(
+		_s.nodes, ctx.doc, _s.watch,
+		l, c, depth + 1, _s.watches,
+		'\n' .. ctx.indent_str
+	)
+	_s.max_depth = depth
 	_s.watch[3], _s.watch[4] = _l, _c
 	_s.value = ctx.doc:get_text(l, c, _l, _c)
 
+	table.insert(_s.watches, _s.watch)
 	push(_s)
 	return true
 end
@@ -461,6 +476,24 @@ end
 local function transforms(snippets, id)
 	for _, _s in ipairs(snippets) do
 		transforms_for(_s, id)
+	end
+end
+
+local function set_active(w, val)
+	while not w.snippet and w.active ~= val do
+		w.active = val
+		w = w.parent
+	end
+end
+
+local function clear_active(snippets)
+	local id = snippets.last_id
+	for _, _s in ipairs(snippets) do
+		for node in pairs(_s.tabstops[id] or { }) do
+			if node ~= 'count' then
+				set_active(node.watch, false)
+			end
+		end
 	end
 end
 
@@ -528,6 +561,7 @@ local function set_tabstop(snippets, id)
 		for n in pairs(nodes) do
 			if n ~= 'count' then
 				selection_for_watch(new_sels, n.watch)
+				set_active(n.watch, true)
 			end
 		end
 		::continue::
@@ -739,21 +773,23 @@ function M.execute(snippet, doc, partial)
 
 	local a = {
 		doc = doc, parent = active[doc],
-		tabstops = { }, last_id = 0, max_id = 0
+		tabstops = { }, last_id = 0, max_id = 0,
+		max_depth = 0
 	}
 	active[doc] = a
 
+	local depth = a.parent and a.parent.max_depth + 1 or 1
 	for idx, l, c in doc:get_selections(true, true) do
 		_s = snippets[idx]
 		local ctx = _s.ctx
 		ctx.indent_sz, ctx.indent_str = doc:get_line_indent(doc.lines[l])
 		ctx.line, ctx.col = l, c
-		_s.watch = { l, c, l, c }
-		if not init(_s) or not expand(_s) then
+		if not init(_s) or not expand(_s, depth) then
 			while doc.undo_stack.idx > undo_idx do doc:undo() end
 			active[doc] = a.parent
 			return
 		end
+		a.max_depth = math.max(a.max_depth, _s.max_depth)
 	end
 
 	if a.max_id > 0 then M.next(a) else M.exit(a) end
@@ -779,6 +815,7 @@ function M.next(snippets)
 	local id = next_id(snippets)
 	if id then
 		if snippets.last_id ~= 0 then transforms(snippets, snippets.last_id) end
+		clear_active(snippets, snippets.last_id)
 		set_tabstop(snippets, id)
 	end
 end
@@ -788,6 +825,7 @@ function M.previous(snippets)
 	local id = next_id(snippets, true)
 	if id then
 		if snippets.last_id ~= 0 then transforms(snippets, snippets.last_id) end
+		clear_active(snippets, snippets.last_id)
 		set_tabstop(snippets, id)
 	end
 end
