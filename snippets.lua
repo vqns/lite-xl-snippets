@@ -340,16 +340,16 @@ end
 
 local function push(_s)
 	watches[_s.ctx.doc] = watches[_s.ctx.doc] or { }
-	local watch = watches[_s.ctx.doc]
-	local w1l, w1c = _s.watch.start_line, _s.watch.start_col
+	local doc_watches = watches[_s.ctx.doc]
+	local w1l, w1c = _s.watch[1], _s.watch[2]
 	local idx = 1
-	for i = #watch, 1, -1 do
-		local w2l, w2c = watch[i].start_line, watch[i].start_col
+	for i = #doc_watches, 1, -1 do
+		local w2l, w2c = doc_watches[i][1], doc_watches[i][2]
 		if w2l < w1l or w2l == w1l and w2c < w1c then
 			idx = i + 1; break
 		end
 	end
-	common.splice(watch, idx, 0, _s.watches)
+	common.splice(doc_watches, idx, 0, _s.watches)
 
 	local a = active[_s.ctx.doc]
 	local ts = a.tabstops
@@ -364,14 +364,14 @@ local function push(_s)
 end
 
 local function pop(_s)
-	local watch = watches[_s.ctx.doc]
+	local doc_watches = watches[_s.ctx.doc]
 	local w1, w2 = _s.watches[1], _s.watches[#_s.watches]
 	local i1, i2
-	for i, w in ipairs(watch) do
+	for i, w in ipairs(doc_watches) do
 		if w == w1 then i1 = i end
 		if w == w2 then i2 = i; break end
 	end
-	common.splice(watch, i1, i2 - i1 + 1)
+	common.splice(doc_watches, i1, i2 - i1 + 1)
 
 	local a = active[_s.ctx.doc]
 	local ts = a.tabstops
@@ -402,7 +402,7 @@ local function insert_nodes(nodes, doc, l, c, watches, indent)
 	for _, n in ipairs(nodes) do
 		local w
 		if n.kind == 'user' then
-			w = { start_line = l, start_col = c }
+			w = { l, c }
 			n.watch = w
 			table.insert(watches, w)
 		else
@@ -416,7 +416,7 @@ local function insert_nodes(nodes, doc, l, c, watches, indent)
 		end
 		l, c = _l, _c
 		if w then
-			w.end_line, w.end_col = l, c
+			w[3], w[4] = l, c
 		end
 	end
 	return l, c
@@ -428,7 +428,7 @@ local function expand(_s)
 	local l, c = ctx.line, ctx.col
 
 	local _l, _c = insert_nodes(_s.nodes, ctx.doc, l, c, _s.watches, '\n' .. ctx.indent_str)
-	_s.watch.end_line, _s.watch.end_col = _l, _c
+	_s.watch[3], _s.watch[4] = _l, _c
 	_s.value = ctx.doc:get_text(l, c, _l, _c)
 
 	push(_s)
@@ -447,11 +447,11 @@ local function transforms_for(_s, id)
 		local w = n.watch
 		if --[[not w.dirty or]] not n.transform then goto continue end
 
-		local v = doc:get_text(w.start_line, w.start_col, w.end_line, w.end_col)
+		local v = doc:get_text(w[1], w[2], w[3], w[4])
 		local r = type(n.value) == 'table' and n.value or nil
 		v = n.transform(v, r) or ''
-		doc:remove(w.start_line, w.start_col, w.end_line, w.end_col)
-		doc:insert(w.start_line, w.start_col, v)
+		doc:remove(w[1], w[2], w[3], w[4])
+		doc:insert(w[1], w[2], v)
 		w.dirty = false
 
 		::continue::
@@ -467,10 +467,10 @@ end
 -- docview crashes while updating if the doc doesnt have selections
 -- so instead gather all new selections & set it at once
 local function selection_for_watch(sels, w, end_only)
-	table.insert(sels, w.end_line)
-	table.insert(sels, w.end_col)
-	table.insert(sels, end_only and w.end_line or w.start_line)
-	table.insert(sels, end_only and w.end_col  or w.start_col)
+	table.insert(sels, w[3])
+	table.insert(sels, w[4])
+	table.insert(sels, end_only and w[3] or w[1])
+	table.insert(sels, end_only and w[4] or w[2])
 end
 
 local function select_after(snippets)
@@ -556,31 +556,31 @@ local raw_insert, raw_remove = Doc.raw_insert, Doc.raw_remove
 
 function Doc:raw_insert(l1, c1, t, undo, ...)
 	raw_insert(self, l1, c1, t, undo, ...)
-	local watch = watches[self]
-	if not watch then return end
+	local doc_watches = watches[self]
+	if not doc_watches then return end
 
 	local u = undo[undo.idx - 1]
 	local l2, c2 = u[3], u[4]
 
 	local ldiff, cdiff = l2 - l1, c2 - c1
-	for i = #watch, 1, -1 do
-		local w = watch[i]
+	for i = #doc_watches, 1, -1 do
+		local w = doc_watches[i]
 		local d1, d2 = true, false
 
-		if w.end_line > l1 then
-			w.end_line = w.end_line + ldiff
-		elseif w.end_line == l1 and w.end_col >= c1 then
-			w.end_line = w.end_line + ldiff
-			w.end_col = w.end_col + cdiff
+		if w[3] > l1 then
+			w[3] = w[3] + ldiff
+		elseif w[3] == l1 and w[4] >= c1 then
+			w[3] = w[3] + ldiff
+			w[4] = w[4] + cdiff
 		else
 			d1 = false
 		end
 
-		if w.start_line > l1 then
-			w.start_line = w.start_line + ldiff
-		elseif w.start_line == l1 and w.start_col > c1 then
-			w.start_line = w.start_line + ldiff
-			w.start_col = w.start_col + cdiff
+		if w[1] > l1 then
+			w[1] = w[1] + ldiff
+		elseif w[1] == l1 and w[2] > c1 then
+			w[1] = w[1] + ldiff
+			w[2] = w[2] + cdiff
 		else
 			d2 = true
 		end
@@ -591,32 +591,32 @@ end
 
 function Doc:raw_remove(l1, c1, l2, c2, ...)
 	raw_remove(self, l1, c1, l2, c2, ...)
-	local watch = watches[self]
-	if not watch then return end
+	local doc_watches = watches[self]
+	if not doc_watches then return end
 
 	local ldiff, cdiff = l2 - l1, c2 - c1
-	for i = #watch, 1, -1 do
-		local w = watch[i]
+	for i = #doc_watches, 1, -1 do
+		local w = doc_watches[i]
 		local d1, d2 = true, false
-		local wsl, wsc, wel, wec = w.start_line, w.start_col, w.end_line, w.end_col
+		local w1, w2, w3, w4 = w[1], w[2], w[3], w[4]
 
-		if wel > l1 or (wel == l1 and wec > c1) then
-			if wel > l2 then
-				w.end_line = wel - ldiff
+		if w3 > l1 or (w3 == l1 and w4 > c1) then
+			if w3 > l2 then
+				w[3] = w3 - ldiff
 			else
-				w.end_line = l1
-				w.end_col = (wel == l2 and wec > c2) and wec - cdiff or c1
+				w[3] = l1
+				w[4] = (w3 == l2 and w4 > c2) and w4 - cdiff or c1
 			end
 		else
 			d1 = false
 		end
 
-		if wsl > l1 or (wsl == l1 and wsc > c1) then
-			if wsl > l2 then
-				w.start_line = wsl - ldiff
+		if w1 > l1 or (w1 == l1 and w2 > c1) then
+			if w1 > l2 then
+				w[1] = w1 - ldiff
 			else
-				w.start_line = l1
-				w.start_col = (wsl == l2 and wsc > c2) and wsc - cdiff or c1
+				w[1] = l1
+				w[2] = (w1 == l2 and w2 > c2) and w2 - cdiff or c1
 			end
 		else
 			d2 = true
@@ -748,7 +748,7 @@ function M.execute(snippet, doc, partial)
 		local ctx = _s.ctx
 		ctx.indent_sz, ctx.indent_str = doc:get_line_indent(doc.lines[l])
 		ctx.line, ctx.col = l, c
-		_s.watch = { start_line = l, start_col = c, end_line = l, end_col = c }
+		_s.watch = { l, c, l, c }
 		if not init(_s) or not expand(_s) then
 			while doc.undo_stack.idx > undo_idx do doc:undo() end
 			active[doc] = a.parent
