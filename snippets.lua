@@ -513,11 +513,19 @@ end
 
 -- docview crashes while updating if the doc doesnt have selections
 -- so instead gather all new selections & set it at once
+-- selections also need to be sorted as multicursor editing relies on that
 local function selection_for_watch(sels, w, end_only)
-	table.insert(sels, w[3])
-	table.insert(sels, w[4])
-	table.insert(sels, end_only and w[3] or w[1])
-	table.insert(sels, end_only and w[4] or w[2])
+	local i = 1
+	while i < #sels do
+		if sels[i] > w[3] or sels[i] == w[3] and sels[i + 1] > w[4] then
+			break
+		end
+		i = i + 4
+	end
+	common.splice(
+		sels, i, 0,
+		{ w[3], w[4], end_only and w[3] or w[1], end_only and w[4] or w[2] }
+	)
 end
 
 local function select_after(snippets)
