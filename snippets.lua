@@ -338,20 +338,34 @@ end
 
 -- expand
 
-local function push(_s)
-	watches[_s.ctx.doc] = watches[_s.ctx.doc] or { }
-	local doc_watches = watches[_s.ctx.doc]
-	local w1l, w1c = _s.watch[1], _s.watch[2]
-	local idx = 1
-	for i = #doc_watches, 1, -1 do
-		local w2l, w2c = doc_watches[i][1], doc_watches[i][2]
-		if w2l < w1l or w2l == w1l and w2c < w1c then
-			idx = i + 1; break
-		end
-	end
-	common.splice(doc_watches, idx, 0, _s.watches)
+local function w_cmp(w1, w2)
+	local x
+	x = w2[3] - w1[3]
+	if x > 0 then return true elseif x < 0 then return false end
+	x = w2[4] - w1[4]
+	if x > 0 then return true elseif x < 0 then return false end
+	x = w2[1] - w1[1]
+	if x < 0 then return true elseif x > 0 then return false end
+	x = w2[2] - w1[2]
+	if x < 0 then return true elseif x > 0 then return false end
+	return w2.depth < w1.depth
+end
 
-	local a = active[_s.ctx.doc]
+local function push(_s)
+	local doc = _s.ctx.doc
+
+	if not watches[doc] or #watches[doc] == 0 then
+		watches[doc] = common.merge(_s.watches)
+	else
+		local w, doc_watches = _s.watches[#_s.watches], watches[doc]
+		local idx = #doc_watches
+		while idx > 1 and w_cmp(w, doc_watches[idx]) do
+			idx = idx - 1
+		end
+		common.splice(doc_watches, idx + 1, 0, _s.watches)
+	end
+
+	local a = active[doc]
 	local ts = a.tabstops
 	for id, _ in pairs(_s.tabstops) do
 		local c = ts[id]
@@ -378,7 +392,7 @@ local function pop(_s)
 	local max = false
 	for id, _ in pairs(_s.tabstops) do
 		ts[id] = ts[id] - 1
-		if id == a.max_id and ts[id] == 0 then max = true end
+		max = max or (a.max_id and ts[id] == 0)
 	end
 	if max then
 		max = 0
@@ -404,7 +418,6 @@ local function insert_nodes(nodes, doc, p, l, c, d, watches, indent)
 		if n.kind == 'user' then
 			w = { l, c, depth = d, active = false, parent = p }
 			n.watch = w
-			table.insert(watches, w)
 		else
 			n.value = n.value:gsub('\n', indent)
 		end
@@ -419,6 +432,7 @@ local function insert_nodes(nodes, doc, p, l, c, d, watches, indent)
 		end
 		l, c = _l, _c
 		if w then
+			table.insert(watches, w)
 			table.insert(p.children, w)
 			w[3], w[4] = l, c
 		end
