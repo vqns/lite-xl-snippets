@@ -913,17 +913,24 @@ keymap.add {
 	['escape']    = 'snippets:exit'
 }
 
-do -- 'next' is added to keymap after 'complete' so it overrides autocomplete
-	local keys = keymap.get_bindings('autocomplete:complete')
-	if not keys then goto continue end
-	for _, k in ipairs(keys) do
-		if k == 'tab' then
-			keymap.unbind('tab', 'autocomplete:complete')
-			keymap.add { ['tab'] = 'autocomplete:complete' }
-			break
+
+-- snippets commands are added to the keymap after autocomplete
+-- so autocomplete commands are overriden if they're bound to the same keys
+do
+	local function rebind(key, cmd)
+		local keys = keymap.get_bindings(cmd)
+		if not keys then return end
+		for _, k in ipairs(keys) do
+			if k == key then
+				keymap.unbind(key, cmd)
+				keymap.add { [key] = cmd }
+				break
+			end
 		end
 	end
-	::continue::
+
+	rebind('tab',    'autocomplete:complete')
+	rebind('escape', 'autocomplete:cancel')
 end
 
 
