@@ -39,7 +39,7 @@ end
 
 -  `trigger`: if present, adds the snippet to autocompletion suggestions.
 -  `files`: optional filter used by the autocomplete plugin, in the form of a
-   [lua pattern] to be checked against filenames. 
+   [lua pattern] to be checked against filenames.
 -  `info`: the name on the right of the trigger in the autocompletion menu.
 -  `desc`: the description popup next to the autocompletion menu. Defaults to
    the template.
@@ -135,6 +135,9 @@ Once expanded, a snippet may be navigated through using these commands:
 
 `snippets:exit` (`escape`):
     sets selections for either the end tabstop (e.g `$0`) or after the snippet.
+
+`snippets:exit-all`:
+    exits all snippets, as opposed to only the innermost level.
 
 `snippets:next-or-exit` (`tab`):
     if the current tabstop is the last one, exits; otherwise, next.

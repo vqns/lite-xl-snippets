@@ -832,9 +832,9 @@ function M.select_current(snippets)
 	if id then set_tabstop(snippets, id) end
 end
 
-function M.next(snippets)
+local function nextprev(snippets, previous)
 	if #snippets == 0 then return end
-	local id = next_id(snippets)
+	local id = next_id(snippets, previous)
 	if id then
 		if snippets.last_id ~= 0 then transforms(snippets, snippets.last_id) end
 		clear_active(snippets, snippets.last_id)
@@ -842,14 +842,12 @@ function M.next(snippets)
 	end
 end
 
+function M.next(snippets)
+	nextprev(snippets)
+end
+
 function M.previous(snippets)
-	if #snippets == 0 then return end
-	local id = next_id(snippets, true)
-	if id then
-		if snippets.last_id ~= 0 then transforms(snippets, snippets.last_id) end
-		clear_active(snippets, snippets.last_id)
-		set_tabstop(snippets, id)
-	end
+	nextprev(snippets, true)
 end
 
 function M.exit(snippets)
@@ -871,12 +869,31 @@ function M.exit(snippets)
 			select_after(snippets)
 		end
 		if snippets == active[doc] then
-			active[doc] = nil
+			active[doc]  = nil
 			watches[doc] = nil
 		else
 			for _, _s in ipairs(snippets) do pop(_s) end
 		end
 	end
+end
+
+function M.exit_all(snippets)
+	if #snippets == 0 then return end
+	local doc = snippets.doc
+	local last
+	while snippets do
+		if snippets.last_id ~= 0 then transforms(snippets, snippets.last_id) end
+		last = snippets
+		snippets = snippets.parent
+	end
+	local c = last.tabstops[0]; c = c and c > 0
+	if c then
+		set_tabstop(last, 0)
+	else
+		select_after(last)
+	end
+	active[doc]  = nil
+	watches[doc] = nil
 end
 
 function M.next_or_exit(snippets)
@@ -904,6 +921,7 @@ command.add(M.in_snippet, {
 	['snippets:next']           = M.next,
 	['snippets:previous']       = M.previous,
 	['snippets:exit']           = M.exit,
+	['snippets:exit-all']       = M.exit_all,
 	['snippets:next-or-exit']   = M.next_or_exit
 })
 

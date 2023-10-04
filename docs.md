@@ -365,6 +365,7 @@ it can however be used to call the following functions:
 *  `snippets.next(snippets)`: sets selections for the next tabstop
 *  `snippets.previous(snippets)`: sets selections for the previous tabstop
 *  `snippets.exit(snippets)`: exits the snippets
+*  `snippets.exit_all(snippets)`: recursively exits snippets and its parents
 *  `snippets.next_or_exit(snippets)`: if on the last tabstop, exits; otherwise,
     sets the next tabstop
 
