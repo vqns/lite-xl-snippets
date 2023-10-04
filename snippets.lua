@@ -474,13 +474,15 @@ local function transforms_for(_s, id)
 	for n in pairs(nodes) do
 		if n == 'count' then goto continue end
 		local w = n.watch
-		if --[[not w.dirty or]] not n.transform then goto continue end
+		if not w.dirty or not n.transform then goto continue end
 
 		local v = doc:get_text(w[1], w[2], w[3], w[4])
 		local r = type(n.value) == 'table' and n.value or nil
-		v = n.transform(v, r) or ''
-		doc:remove(w[1], w[2], w[3], w[4])
-		doc:insert(w[1], w[2], v)
+		local _v = n.transform(v, r) or ''
+		if v ~= _v then
+			doc:remove(w[1], w[2], w[3], w[4])
+			doc:insert(w[1], w[2], _v)
+		end
 		w.dirty = false
 
 		::continue::
