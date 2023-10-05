@@ -13,7 +13,10 @@ local snippets = require 'plugins.snippets'
 
 local json do
 	local ok, j 
-	for _, p in ipairs { 'plugins.json', 'plugins.lsp.json', 'plugins.lintplus.json' } do
+	for _, p in ipairs {
+		'plugins.json', 'plugins.lsp.json', 'plugins.lintplus.json',
+		'libraries.json'
+	} do
 		ok, j = pcall(require, p)
 		if ok then json = j; break end
 	end
@@ -28,49 +31,48 @@ local THREAD_KEY = { }
 
 -- node factories
 
+local function doc_syntax(doc, k)
+	return doc.syntax and doc.syntax[k]
+end
+
 local variables = {
 	-- LSP
-	TM_SELECTED_TEXT = function(ctx) return ctx.selection end,
-	TM_CURRENT_LINE  = function(ctx) return ctx.doc.lines[ctx.line] end,
-	TM_CURRENT_WORD  = function(ctx) return ctx.partial end,
-	TM_LINE_INDEX    = function(ctx) return ctx.line - 1 end,
-	TM_LINE_NUMBER   = function(ctx) return ctx.line end,
-	TM_FILENAME      = function(ctx) return ctx.doc.filename:match('[^/%\\]*$') or '' end,
-	TM_FILENAME_BASE = function(ctx) return ctx.doc.filename:match('([^/%\\]*)%.%w*$') or ctx.doc.filename end,
-	TM_DIRECTORY     = function(ctx) return ctx.doc.filename:match('([^/%\\]*)[/%\\].*$') or '' end,
-	TM_FILEPATH      = function(ctx) return common.dirname(ctx.doc.abs_filename) or '' end,
+	TM_SELECTED_TEXT         = function(ctx) return ctx.selection end,
+	TM_CURRENT_LINE          = function(ctx) return ctx.doc.lines[ctx.line] end,
+	TM_CURRENT_WORD          = function(ctx) return ctx.partial end,
+	TM_LINE_INDEX            = function(ctx) return ctx.line - 1 end,
+	TM_LINE_NUMBER           = function(ctx) return ctx.line end,
+	TM_FILENAME              = function(ctx) return ctx.doc.filename:match('[^/%\\]*$') or '' end,
+	TM_FILENAME_BASE         = function(ctx) return ctx.doc.filename:match('([^/%\\]*)%.%w*$') or ctx.doc.filename end,
+	TM_DIRECTORY             = function(ctx) return ctx.doc.filename:match('([^/%\\]*)[/%\\].*$') or '' end,
+	TM_FILEPATH              = function(ctx) return common.dirname(ctx.doc.abs_filename) or '' end,
 	-- VSCode
-	RELATIVE_FILEPATH = function(ctx) return core.normalize_to_project_dir(ctx.doc.filename) end,
-	-- ?
-	-- https://github.com/lite-xl/lite-xl/blob/master/data/core/commands/doc.lua#L243
-	CLIPBOARD         = function() return system.get_clipboard() end,
-	-- ??
-	WORKSPACE_NAME    = function(ctx) return end,
-	WORKSPACE_FOLDER  = function(ctx) return end,
-	CURSOR_INDEX      = function(ctx) return ctx.col - 1 end,
-	CURSOR_NUMBER     = function(ctx) return ctx.col end,
-	-- os.date() is a strftime() delegate
-	-- https://www.lua.org/manual/5.4/manual.html#pdf-os.date
-	-- https://en.cppreference.com/w/c/chrono/strftime
-	CURRENT_YEAR             = function() return os.date('%G') end,
-	CURRENT_YEAR_SHORT       = function() return os.date('%g') end,
-	CURRENT_MONTH            = function() return os.date('%m') end,
-	CURRENT_MONTH_NAME       = function() return os.date('%B') end,
-	CURRENT_MONTH_NAME_SHORT = function() return os.date('%b') end,
-	CURRENT_DATE             = function() return os.date('%d') end,
-	CURRENT_DAY_NAME         = function() return os.date('%A') end,
-	CURRENT_DAY_NAME_SHORT   = function() return os.date('%a') end,
-	CURRENT_HOUR             = function() return os.date('%H') end,
-	CURRENT_MINUTE           = function() return os.date('%M') end,
-	CURRENT_SECOND           = function() return os.date('%S') end,
-	CURRENT_SECONDS_UNIX     = function() return os.time() end,
-	RANDOM                   = function() return string.format('%06d', math.random(999999)) end,
-	RANDOM_HEX               = function() return string.format('%06x', math.random(0xFFFFFF)) end
+	RELATIVE_FILEPATH        = function(ctx) return core.normalize_to_project_dir(ctx.doc.filename) end,
+	CLIPBOARD                = function()    return system.get_clipboard() end,
+	-- https://github.com/lite-xl/lite-xl/pull/1455
+	WORKSPACE_NAME           = function(ctx) return end,
+	WORKSPACE_FOLDER         = function(ctx) return end,
+	CURSOR_INDEX             = function(ctx) return ctx.col - 1 end,
+	CURSOR_NUMBER            = function(ctx) return ctx.col end,
+	CURRENT_YEAR             = function()    return os.date('%G') end,
+	CURRENT_YEAR_SHORT       = function()    return os.date('%g') end,
+	CURRENT_MONTH            = function()    return os.date('%m') end,
+	CURRENT_MONTH_NAME       = function()    return os.date('%B') end,
+	CURRENT_MONTH_NAME_SHORT = function()    return os.date('%b') end,
+	CURRENT_DATE             = function()    return os.date('%d') end,
+	CURRENT_DAY_NAME         = function()    return os.date('%A') end,
+	CURRENT_DAY_NAME_SHORT   = function()    return os.date('%a') end,
+	CURRENT_HOUR             = function()    return os.date('%H') end,
+	CURRENT_MINUTE           = function()    return os.date('%M') end,
+	CURRENT_SECOND           = function()    return os.date('%S') end,
+	CURRENT_SECONDS_UNIX     = function()    return os.time() end,
+	RANDOM                   = function()    return string.format('%06d', math.random(999999)) end,
+	RANDOM_HEX               = function()    return string.format('%06x', math.random(0xFFFFFF)) end,
+	BLOCK_COMMENT_START      = function(ctx) return (doc_syntax(ctx.doc, 'block_comment') or { })[1] end,
+	BLOCK_COMMENT_END        = function(ctx) return (doc_syntax(ctx.doc, 'block_comment') or { })[2] end,
+	LINE_COMMENT             = function(ctx) return doc_syntax(ctx.doc, 'comment') end
 	-- https://code.visualstudio.com/docs/editor/userdefinedsnippets#_variables
 	-- UUID
-	-- BLOCK_COMMENT_START
-	-- BLOCK_COMMENT_END
-	-- BLOCK_COMMENT_END
 }
 
 local formatters; formatters = {
@@ -186,12 +188,6 @@ local function text_node(v, _s)
 end
 
 local function variable_node(v, _s)
-	-- lsp/vscode spec:
-	-- > When a variable isn’t set, its default or the empty string is inserted.
-	-- > When a variable is unknown (that is, its name isn’t defined) the name of
-	-- > the variable is inserted and it is transformed into a placeholder.
-	-- whatever that means, just convert to tabstop w/ default or transform
-
 	local name = v[2]
 	local var = variables[name]
 
@@ -264,7 +260,8 @@ local P do
 		__call = function(mt, parser, converter)
 			return setmetatable({ parser = parser, converter = converter }, mt)
 		end,
-		-- allows 'lazy arguments'; i.e can use a yet to be defined rule in a previous rule
+		-- allows 'lazy arguments'
+		-- i.e can use a yet to be defined rule in a previous rule
 		__index = function(t, k)
 			return function(...) return t[k](...) end
 		end
@@ -330,7 +327,9 @@ local function consume(stops, escapes)
 			to = to + 1
 			c = str:sub(to, to)
 		end
-		return to ~= at and ok(to, { raw = table.concat(raw), esc = table.concat(esc) }) or fail(at)
+		return to ~= at
+			and ok(to, { raw = table.concat(raw), esc = table.concat(esc) })
+			or fail(at)
 	end
 end
 
@@ -507,7 +506,9 @@ local function parse_file(file)
 	local exts = file:match('%.json$') and files2exts[file]
 	for i, s in pairs(r) do
 		-- apparently body can be a single string
-		local template = type(s.body) == 'table' and table.concat(s.body, '\n') or s.body
+		local template = type(s.body) == 'table'
+			and table.concat(s.body, '\n')
+			or s.body
 		if not template or template == '' then
 			core.warn('[LSP snippets] missing \'body\' for %s (%s)', i, file)
 			goto continue
@@ -641,7 +642,10 @@ local warned = false
 function M.add_paths(paths)
 	if not json then
 		if not warned then
-			core.error('[LSP snippets] Could not add snippet file(s): JSON plugin not found')
+			core.error(
+				'[LSP snippets] Could not add snippet file(s):' ..
+				'JSON plugin not found'
+			)
 			warned = true
 		end
 		return

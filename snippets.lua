@@ -3,8 +3,8 @@
 
 local core      = require 'core'
 local command   = require 'core.command'
-local config    = require 'core.config'
 local common    = require 'core.common'
+local config    = require 'core.config'
 local Doc       = require 'core.doc'
 local translate = require 'core.doc.translate'
 local keymap    = require 'core.keymap'
@@ -202,7 +202,10 @@ local function get_matches(doc, patterns, l1, c1, l2, c2)
 		end
 
 		if not match then
-			core.error('[snippets] failed strict match #%d: \'%s\'', i, p.pattern)
+			core.error(
+				'[snippets] failed strict match #%d: \'%s\'',
+				i, p.pattern
+			)
 			return
 		end
 
@@ -595,7 +598,9 @@ local function next_id(snippets, reverse)
 			for i in pairs(snippets.tabstops) do table.insert(ts, i) end
 			table.sort(ts)
 			local last = 0
-			for i, _id in ipairs(ts) do if _id == id then last = i; break end end
+			for i, _id in ipairs(ts) do
+				if _id == id then last = i; break end
+			end
 			ts = { array = ts, last = last - 1 }
 			snippets._tabstops_as_array = ts
 		end
@@ -770,7 +775,9 @@ end
 
 M.parsers = parsers
 
-M.parsers[DEFAULT_FORMAT] = function(s) return { kind = 'static', value = s } end
+M.parsers[DEFAULT_FORMAT] = function(s)
+	return { kind = 'static', value = s }
+end
 
 local function ac_callback(_, item)
 	M.execute(item.data, nil, true)
@@ -827,7 +834,8 @@ function M.execute(snippet, doc, partial)
 	if not doc then return end
 
 	local _t, _s = type(snippet)
-	_s = _t == 'number' and get_by_id(snippet) or _t == 'table' and get_raw(snippet)
+	_s = _t == 'number' and get_by_id(snippet)
+	  or _t == 'table'  and get_raw(snippet)
 	if not _s then return end
 
 	local undo_idx = doc.undo_stack.idx
@@ -865,7 +873,9 @@ function M.execute(snippet, doc, partial)
 		else
 			local _; _, _, l2, c2 = doc:get_selection_idx(idx - 1, true)
 		end
-		ctx.matches, ctx.removed_from_matches = get_matches(doc, _s.matches, l2, c2, l1, c1)
+		ctx.matches, ctx.removed_from_matches = get_matches(
+			doc, _s.matches, l2, c2, l1, c1
+		)
 
 		if not ctx.matches then
 			while doc.undo_stack.idx > undo_idx do doc:undo() end
@@ -921,7 +931,9 @@ local function nextprev(snippets, previous)
 	if #snippets == 0 then return end
 	local id = next_id(snippets, previous)
 	if id then
-		if snippets.last_id ~= 0 then transforms(snippets, snippets.last_id) end
+		if snippets.last_id ~= 0 then
+			transforms(snippets, snippets.last_id)
+		end
 		clear_active(snippets, snippets.last_id)
 		set_tabstop(snippets, id)
 	end
@@ -967,7 +979,9 @@ function M.exit_all(snippets)
 	local doc = snippets.doc
 	local last
 	while snippets do
-		if snippets.last_id ~= 0 then transforms(snippets, snippets.last_id) end
+		if snippets.last_id ~= 0 then
+			transforms(snippets, snippets.last_id)
+		end
 		last = snippets
 		snippets = snippets.parent
 	end
