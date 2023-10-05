@@ -355,14 +355,14 @@ local function push(_s)
 	local doc = _s.ctx.doc
 
 	if not watches[doc] or #watches[doc] == 0 then
-		watches[doc] = common.merge(_s.watches)
+		watches[doc] = { _s.watch }
 	else
-		local w, doc_watches = _s.watches[#_s.watches], watches[doc]
+		local w, doc_watches = _s.watch, watches[doc]
 		local idx = #doc_watches
 		while idx > 1 and w_cmp(w, doc_watches[idx]) do
 			idx = idx - 1
 		end
-		common.splice(doc_watches, idx + 1, 0, _s.watches)
+		table.insert(doc_watches, idx, w)
 	end
 
 	local a = active[doc]
@@ -379,13 +379,12 @@ end
 
 local function pop(_s)
 	local doc_watches = watches[_s.ctx.doc]
-	local w1, w2 = _s.watches[1], _s.watches[#_s.watches]
-	local i1, i2
-	for i, w in ipairs(doc_watches) do
-		if w == w1 then i1 = i end
-		if w == w2 then i2 = i; break end
+	local w = _s.watch
+	for i, _w in ipairs(doc_watches) do
+		if w == _w then
+			table.remove(doc_watches, i)
+		end
 	end
-	common.splice(doc_watches, i1, i2 - i1 + 1)
 
 	local a = active[_s.ctx.doc]
 	local ts = a.tabstops
@@ -411,7 +410,7 @@ local function pop(_s)
 	table.remove(a, idx)
 end
 
-local function insert_nodes(nodes, doc, p, l, c, d, watches, indent)
+local function insert_nodes(nodes, doc, p, l, c, d, indent)
 	local _l, _c
 	for _, n in ipairs(nodes) do
 		local w
@@ -424,7 +423,7 @@ local function insert_nodes(nodes, doc, p, l, c, d, watches, indent)
 		if type(n.value) == 'table' then
 			w.children = { }
 			_l, _c, d = insert_nodes(
-				n.value.nodes, doc, w, l, c, d + 1, watches, indent
+				n.value.nodes, doc, w, l, c, d + 1, indent
 			)
 		else
 			doc:insert(l, c, n.value)
@@ -432,7 +431,6 @@ local function insert_nodes(nodes, doc, p, l, c, d, watches, indent)
 		end
 		l, c = _l, _c
 		if w then
-			table.insert(watches, w)
 			table.insert(p.children, w)
 			w[3], w[4] = l, c
 		end
@@ -448,18 +446,16 @@ local function expand(_s, depth)
 		active = true, snippet = true,
 		children = { }
 	}
-	_s.watches = { }
 
 	local _l, _c = insert_nodes(
 		_s.nodes, ctx.doc, _s.watch,
-		l, c, depth + 1, _s.watches,
+		l, c, depth + 1,
 		'\n' .. ctx.indent_str
 	)
 	_s.max_depth = depth
 	_s.watch[3], _s.watch[4] = _l, _c
 	_s.value = ctx.doc:get_text(l, c, _l, _c)
 
-	table.insert(_s.watches, _s.watch)
 	push(_s)
 	return true
 end
@@ -612,6 +608,75 @@ end
 
 local raw_insert, raw_remove = Doc.raw_insert, Doc.raw_remove
 
+local function dispatch_insert(w, l1, c1, l2, c2, ldiff, cdiff)
+	local found_aa = false
+
+	if w[3] > l1 then
+		w[3] = w[3] + ldiff
+	-- w[4] == c1: found the append/active
+	elseif w[3] == l1 and w[4] >= c1 then
+		found_aa = w.active and w[4] == c1
+		w[3] = w[3] + ldiff
+		w[4] = w[4] + cdiff
+	else
+		return false
+	end
+
+	if w[1] > l1 then
+		w[1] = w[1] + ldiff
+	-- move start only if not active
+	elseif w[1] == l1 and
+	      (w[2] > c1 or (w[2] == c1 and not found_aa)) then
+		w[1] = w[1] + ldiff
+		w[2] = w[2] + cdiff
+	else
+		w.dirty = true
+	end
+
+	for i = (w.children and #w.children or 0), 1, -1 do
+		if dispatch_insert(w.children[i], l1, c1, l2, c2, ldiff, cdiff) then
+			break
+		end
+	end
+
+	return found_aa
+end
+
+local function dispatch_remove(w, l1, c1, l2, c2, ldiff, cdiff)
+	local d1, d2 = true, false
+	local w1, w2, w3, w4 = w[1], w[2], w[3], w[4]
+
+	if w3 > l1 or (w3 == l1 and w4 > c1) then
+		if w3 > l2 then
+			w[3] = w3 - ldiff
+		else
+			w[3] = l1
+			w[4] = (w3 == l2 and w4 > c2) and w4 - cdiff or c1
+		end
+	else
+		d1 = false
+	end
+
+	if w1 > l1 or (w1 == l1 and w2 > c1) then
+		if w1 > l2 then
+			w[1] = w1 - ldiff
+		else
+			w[1] = l1
+			w[2] = (w1 == l2 and w2 > c2) and w2 - cdiff or c1
+		end
+	else
+		d2 = true
+	end
+
+	w.dirty = w.dirty or (d1 and d2)
+
+	for i = (w.children and #w.children or 0), 1, -1 do
+		if dispatch_remove(w.children[i], l1, c1, l2, c2, ldiff, cdiff) then
+			break
+		end
+	end
+end
+
 function Doc:raw_insert(l1, c1, t, undo, ...)
 	raw_insert(self, l1, c1, t, undo, ...)
 	local doc_watches = watches[self]
@@ -619,31 +684,12 @@ function Doc:raw_insert(l1, c1, t, undo, ...)
 
 	local u = undo[undo.idx - 1]
 	local l2, c2 = u[3], u[4]
-
 	local ldiff, cdiff = l2 - l1, c2 - c1
+
 	for i = #doc_watches, 1, -1 do
-		local w = doc_watches[i]
-		local d1, d2 = true, false
-
-		if w[3] > l1 then
-			w[3] = w[3] + ldiff
-		elseif w[3] == l1 and w[4] >= c1 then
-			w[3] = w[3] + ldiff
-			w[4] = w[4] + cdiff
-		else
-			d1 = false
+		if dispatch_insert(doc_watches[i], l1, c1, l2, c2, ldiff, cdiff) then
+			break
 		end
-
-		if w[1] > l1 then
-			w[1] = w[1] + ldiff
-		elseif w[1] == l1 and w[2] > c1 then
-			w[1] = w[1] + ldiff
-			w[2] = w[2] + cdiff
-		else
-			d2 = true
-		end
-
-		w.dirty = w.dirty or (d1 and d2)
 	end
 end
 
@@ -653,34 +699,11 @@ function Doc:raw_remove(l1, c1, l2, c2, ...)
 	if not doc_watches then return end
 
 	local ldiff, cdiff = l2 - l1, c2 - c1
+
 	for i = #doc_watches, 1, -1 do
-		local w = doc_watches[i]
-		local d1, d2 = true, false
-		local w1, w2, w3, w4 = w[1], w[2], w[3], w[4]
-
-		if w3 > l1 or (w3 == l1 and w4 > c1) then
-			if w3 > l2 then
-				w[3] = w3 - ldiff
-			else
-				w[3] = l1
-				w[4] = (w3 == l2 and w4 > c2) and w4 - cdiff or c1
-			end
-		else
-			d1 = false
+		if dispatch_remove(doc_watches[i], l1, c1, l2, c2, ldiff, cdiff) then
+			break
 		end
-
-		if w1 > l1 or (w1 == l1 and w2 > c1) then
-			if w1 > l2 then
-				w[1] = w1 - ldiff
-			else
-				w[1] = l1
-				w[2] = (w1 == l2 and w2 > c2) and w2 - cdiff or c1
-			end
-		else
-			d2 = true
-		end
-
-		w.dirty = w.dirty or (d1 and d2)
 	end
 end
 
