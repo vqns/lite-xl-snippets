@@ -289,14 +289,16 @@ on the next line.
 ### Templates
 
 When a snippet in template form is expanded, it is fed to the corresponding parser,
-which returns nodes that will be resolved and used to expand the snippet. Adding
-support for a template format is a matter of providing the snippets plugin a
-template -> snippet parser function:
+which returns nodes that will be resolved and used to expand the snippet. If the
+added snippet had a `p_args` field, it is also passed to the parsing function.
+
+Adding support for a template format is a matter of providing the snippets plugin
+a template (+ args) -> snippet parser function:
 
 ```lua
 local snippets = require 'plugins.snippets'
 
-local function my_parser(template)
+local function my_parser(template, args)
     return ...
 end
 

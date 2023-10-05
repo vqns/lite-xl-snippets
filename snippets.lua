@@ -121,7 +121,7 @@ local function get_raw(raw)
 				core.error('[snippets] no parser for format: %s', fmt)
 				return
 			end
-			local _p = parser(raw.template)
+			local _p = parser(raw.template, raw.p_args)
 			if not _p or not _p.nodes then return end
 			_s = { nodes = common.merge(_p.nodes) }
 			for _, v in ipairs(SNIPPET_FIELDS) do
@@ -790,6 +790,7 @@ function M.add(snippet)
 	if snippet.template then
 		_s.template = snippet.template
 		_s.format   = snippet.format or DEFAULT_FORMAT
+		_s.p_args   = snippet.p_args
 	elseif snippet.nodes then
 		_s.nodes = snippet.nodes
 	else

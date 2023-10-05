@@ -49,7 +49,7 @@ end
    plugin is the [lsp] / [vscode] subset of [textmate] snippets.
 
 Other possible and optional fields: `nodes`, `defaults`, `transforms`, `choices`,
-`matches`. See [docs.md](docs.md) for details.
+`matches`, `p_args`. See [docs.md](docs.md) for details.
 
 For snippets to be automatically loaded on startup, they should be placed
 somewhere the editor will load them by itself. The easiest way to do that is
