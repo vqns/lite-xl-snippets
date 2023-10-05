@@ -142,6 +142,13 @@ Once expanded, a snippet may be navigated through using these commands:
 `snippets:next-or-exit` (`tab`):
     if the current tabstop is the last one, exits; otherwise, next.
 
+#### Configuration
+
+`config.plugins.snippets`:
+
+* `autoexit` (`true`): automatically exits all snippets when modifying the doc
+    out of a tabstop.
+
 
 ### Advanced
 

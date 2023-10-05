@@ -16,6 +16,7 @@ if config.plugins.autocomplete ~= false then
 end
 
 
+local M       = { }
 local raws    = { }
 local cache   = { }
 local active  = { }
@@ -29,6 +30,25 @@ local DEFAULT_PATTERN  = '([%w_]+)[^%S\n]*$'
 local DEFAULT_MATCH    = { kind = 'lua', pattern = DEFAULT_PATTERN }
 local MATCH_TYPES      = { lua = true }
 local AUTOCOMPLETE_KEY = { }
+
+
+-- config
+
+config.plugins.snippets = common.merge({
+	autoexit = true,
+
+	config_spec = {
+		name = 'Snippets',
+		{
+			label       = 'Automatically exit',
+			description = 'Automatically exit snippets upon text input' ..
+			              'if the leading selection is not on a tabstop.',
+			path        = 'autoexit',
+			type        = 'toggle',
+			default     = true
+		}
+	}
+}, config.plugins.snippets)
 
 
 -- utils
@@ -338,6 +358,29 @@ end
 
 -- expand
 
+-- shitty workaround because the watches / selections aren't set when inserting
+-- the first round of snippets, so autoexit exits when inserting them
+local function doc_expect(doc, val)
+	watches[doc] = watches[doc] or { }
+	watches[doc].expect = val
+end
+
+local function w_active_at(w, l1, c1, l2, c2)
+	if not w.active then return end
+
+	if w[1] > l1 or (w[1] == l1 and w[2] > c1) or
+	   w[3] < l2 or (w[3] == l2 and w[4] < c2) then
+		return
+	  end
+
+	for i = #(w.children or { }), 1, -1 do
+		local r = w_active_at(w.children[i], l1, c1, l2, c2)
+		if r then return r end
+	end
+
+	return not w.snippet and w
+end
+
 local function w_cmp(w1, w2)
 	local x
 	x = w2[3] - w1[3]
@@ -354,8 +397,10 @@ end
 local function push(_s)
 	local doc = _s.ctx.doc
 
-	if not watches[doc] or #watches[doc] == 0 then
+	if not watches[doc] then
 		watches[doc] = { _s.watch }
+	elseif #watches[doc] == 0 then
+		table.insert(watches[doc], _s.watch)
 	else
 		local w, doc_watches = _s.watch, watches[doc]
 		local idx = #doc_watches
@@ -608,6 +653,15 @@ end
 
 local raw_insert, raw_remove = Doc.raw_insert, Doc.raw_remove
 
+local function autoexit(doc)
+	if (watches[doc] and not watches[doc].expect) and
+	    config.plugins.snippets.autoexit and not M.in_snippet(doc, true) then
+		active[doc]  = nil
+		watches[doc] = nil
+		return true
+	end
+end
+
 local function dispatch_insert(w, l1, c1, l2, c2, ldiff, cdiff)
 	local found_aa = false
 
@@ -679,6 +733,8 @@ end
 
 function Doc:raw_insert(l1, c1, t, undo, ...)
 	raw_insert(self, l1, c1, t, undo, ...)
+	if autoexit(self) then return end
+
 	local doc_watches = watches[self]
 	if not doc_watches then return end
 
@@ -695,6 +751,8 @@ end
 
 function Doc:raw_remove(l1, c1, l2, c2, ...)
 	raw_remove(self, l1, c1, l2, c2, ...)
+	if autoexit(self) then return end
+
 	local doc_watches = watches[self]
 	if not doc_watches then return end
 
@@ -710,7 +768,7 @@ end
 
 -- API
 
-local M = { parsers = parsers }
+M.parsers = parsers
 
 M.parsers[DEFAULT_FORMAT] = function(s) return { kind = 'static', value = s } end
 
@@ -825,6 +883,7 @@ function M.execute(snippet, doc, partial)
 	}
 	active[doc] = a
 
+	doc_expect(doc, true)
 	local depth = a.parent and a.parent.max_depth + 1 or 1
 	for idx, l, c in doc:get_selections(true, true) do
 		_s = snippets[idx]
@@ -838,6 +897,7 @@ function M.execute(snippet, doc, partial)
 		end
 		a.max_depth = math.max(a.max_depth, _s.max_depth)
 	end
+	doc_expect(doc, false)
 
 	if a.max_id > 0 then M.next(a) else M.exit(a) end
 
@@ -931,22 +991,44 @@ function M.next_or_exit(snippets)
 	end
 end
 
-function M.in_snippet(doc)
+function M.in_snippet(doc, checkpos)
 	doc = doc or core.active_view.doc
 	if not doc then return end
 	local t = active[doc]
-	if t and #t > 0 then return t, t end
+
+	if not t or #t == 0 then
+		return
+	elseif not checkpos then
+		return t, t
+	end
+
+	local min_depth = t.parent and (t.parent.max_depth + 1) or 0
+	local l1, c1, l2, c2 = doc:get_selection(true)
+	l2 = l2 or l1; c2 = c2 or c1
+	for i = #t, 1, -1 do
+		local a = w_active_at(t[i].watch, l1, c1, l2, c2)
+		if a and a.depth > min_depth then
+			return t, t
+		end
+	end
 end
 
 
 -- commands
 
+local function predicate()
+	return M.in_snippet(nil, config.plugins.snippets.autoexit)
+end
+
 command.add(M.in_snippet, {
 	['snippets:select-current'] = M.select_current,
+	['snippets:exit']           = M.exit,
+	['snippets:exit-all']       = M.exit_all
+})
+
+command.add(predicate, {
 	['snippets:next']           = M.next,
 	['snippets:previous']       = M.previous,
-	['snippets:exit']           = M.exit,
-	['snippets:exit-all']       = M.exit_all,
 	['snippets:next-or-exit']   = M.next_or_exit
 })
 
