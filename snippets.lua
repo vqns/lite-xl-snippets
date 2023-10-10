@@ -518,7 +518,7 @@ local function transforms_for(_s, id)
 	for n in pairs(nodes) do
 		if n == 'count' then goto continue end
 		local w = n.watch
-		if not w.dirty or not n.transform then goto continue end
+		if w.hidden or not w.dirty or not n.transform then goto continue end
 
 		local v = doc:get_text(w[1], w[2], w[3], w[4])
 		local r = type(n.value) == 'table' and n.value or nil
@@ -555,6 +555,44 @@ local function clear_active(snippets)
 			end
 		end
 	end
+end
+
+local function set_hidden(w, into)
+	into = into or { }
+	w.hidden = true
+	into[w] = true
+	if w.children then
+		for _, c in ipairs(w.children) do
+			set_hidden(c, into)
+		end
+	end
+	return into
+end
+
+local function dispatch_sanitize(ts, nodes, hidden)
+	for _, n in ipairs(nodes) do
+		if n.watch and hidden[n.watch] then
+			local id = n.id
+			ts[id] = ts[id] - 1
+		end
+		if type(n.value) == 'table' then
+			dispatch_sanitize(ts, n.value.nodes, hidden)
+		end
+	end
+end
+
+local function sanitize_ts_counts(snippets, hidden)
+	local ts = snippets.tabstops
+	for _, _s in ipairs(snippets) do
+		dispatch_sanitize(ts, _s.nodes, hidden)
+	end
+
+	local new_max = 0
+	for id, count in pairs(ts) do
+		if count > 0 then new_max = math.max(new_max, id) end
+	end
+	snippets.max_id = new_max
+	snippets._tabstops_as_array = nil
 end
 
 -- docview crashes while updating if the doc doesnt have selections
@@ -629,7 +667,7 @@ local function set_tabstop(snippets, id)
 		local nodes = _s.tabstops[id]
 		if not nodes or nodes.count == 0 then goto continue end
 		for n in pairs(nodes) do
-			if n ~= 'count' then
+			if n ~= 'count' and not n.watch.hidden then
 				selection_for_watch(new_sels, n.watch)
 				set_active(n.watch, true)
 			end
@@ -702,38 +740,53 @@ local function dispatch_insert(w, l1, c1, l2, c2, ldiff, cdiff)
 end
 
 local function dispatch_remove(w, l1, c1, l2, c2, ldiff, cdiff)
-	local d1, d2 = true, false
+	local hide, hide_s, hide_c = false, false, false
 	local w1, w2, w3, w4 = w[1], w[2], w[3], w[4]
 
 	if w3 > l1 or (w3 == l1 and w4 > c1) then
 		if w3 > l2 then
 			w[3] = w3 - ldiff
 		else
+			hide = w3 < l2 or (w3 == l2 and w4 <= c2)
 			w[3] = l1
 			w[4] = (w3 == l2 and w4 > c2) and w4 - cdiff or c1
 		end
 	else
-		d1 = false
+		return false
 	end
 
 	if w1 > l1 or (w1 == l1 and w2 > c1) then
 		if w1 > l2 then
 			w[1] = w1 - ldiff
 		else
+			hide_s = w1 > l1 or (w1 == l1 and w2 > c1)
 			w[1] = l1
 			w[2] = (w1 == l2 and w2 > c2) and w2 - cdiff or c1
 		end
 	else
-		d2 = true
+		hide_c = w1 == l1 and w2 == c1
+		w.dirty = true
 	end
 
-	w.dirty = w.dirty or (d1 and d2)
-
-	for i = (w.children and #w.children or 0), 1, -1 do
-		if dispatch_remove(w.children[i], l1, c1, l2, c2, ldiff, cdiff) then
-			break
+	if not w.snippet and w.active and hide then
+		-- if deletion starts before the watch, hide the watch itself
+		if hide_s then
+			return set_hidden(w)
+		-- if the deletion starts at the start of the watch, hide children
+		elseif hide_c then
+			if not w.children then return true end
+			local ret = { }
+			for _, c in ipairs(w.children) do set_hidden(c, ret) end
+			return ret
 		end
 	end
+
+	for i = (w.children and #w.children or 0), 1, -1 do
+		local r = dispatch_remove(w.children[i], l1, c1, l2, c2, ldiff, cdiff)
+		if r then return r end
+	end
+
+	return false
 end
 
 function Doc:raw_insert(l1, c1, t, undo, ...)
@@ -763,11 +816,13 @@ function Doc:raw_remove(l1, c1, l2, c2, ...)
 
 	local ldiff, cdiff = l2 - l1, c2 - c1
 
+	local h
 	for i = #doc_watches, 1, -1 do
-		if dispatch_remove(doc_watches[i], l1, c1, l2, c2, ldiff, cdiff) then
-			break
-		end
+		h = dispatch_remove(doc_watches[i], l1, c1, l2, c2, ldiff, cdiff)
+		if h then break end
 	end
+
+	if type(h) == 'table' then sanitize_ts_counts(active[self], h) end
 end
 
 
